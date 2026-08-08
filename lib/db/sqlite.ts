@@ -1,0 +1,504 @@
+import Database from "better-sqlite3";
+import fs from "fs";
+import path from "path";
+import type { Repo, TicketFilter } from "./index";
+import type {
+  AutomationRule, Attachment, Client, CustomFieldCfg, EmailLog, EmailTemplate, FormFieldCfg, Job, Notification,
+  PermKey, Role, RolePermissions, Settings, Staff, Ticket, TicketEvent, TrackPageCfg,
+} from "../types";
+import { DEFAULT_FORM_FIELDS, DEFAULT_ROLE_PERMISSIONS, DEFAULT_TRACK_CFG } from "../types";
+import { SEED_RULES, SEED_STAFF, SEED_TEMPLATES, SEED_TICKETS } from "../seed";
+import { genId, genTicketCode, nowIso } from "../util";
+
+const DATA_DIR = path.join(process.cwd(), "data");
+const DB_PATH = path.join(DATA_DIR, "support.db");
+
+export function createSqliteRepo(): Repo {
+  fs.mkdirSync(DATA_DIR, { recursive: true });
+  fs.mkdirSync(path.join(DATA_DIR, "uploads"), { recursive: true });
+  const db = new Database(DB_PATH);
+  db.pragma("journal_mode = WAL");
+
+  db.exec(`
+  CREATE TABLE IF NOT EXISTS staff (
+    id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT NOT NULL, role TEXT NOT NULL,
+    manager_id TEXT, active INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS tickets (
+    seq INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT UNIQUE NOT NULL,
+    code TEXT UNIQUE NOT NULL, client_name TEXT NOT NULL, client_contact TEXT,
+    details TEXT NOT NULL, created_by TEXT, created_by_name TEXT NOT NULL,
+    developer_id TEXT, developer_name TEXT,
+    dev_status TEXT NOT NULL DEFAULT 'new', source TEXT NOT NULL DEFAULT 'internal',
+    last_status_change TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+    custom_data TEXT NOT NULL DEFAULT '{}',
+    tester_id TEXT, tester_name TEXT, est_hours REAL, est_days REAL, is_urgent INTEGER NOT NULL DEFAULT 0
+  );
+  CREATE INDEX IF NOT EXISTS idx_tickets_status ON tickets(dev_status);
+  CREATE INDEX IF NOT EXISTS idx_tickets_dev ON tickets(developer_id);
+  CREATE INDEX IF NOT EXISTS idx_tickets_stale ON tickets(dev_status, last_status_change);
+  CREATE TABLE IF NOT EXISTS events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, ticket_id TEXT NOT NULL, type TEXT NOT NULL,
+    actor_label TEXT NOT NULL, old_values TEXT, new_values TEXT, created_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_events_ticket ON events(ticket_id);
+  CREATE TABLE IF NOT EXISTS automation_rules (
+    id TEXT PRIMARY KEY, name TEXT NOT NULL, trigger_type TEXT NOT NULL, trigger_field TEXT,
+    conditions TEXT NOT NULL DEFAULT '[]', actions TEXT NOT NULL DEFAULT '[]',
+    enabled INTEGER NOT NULL DEFAULT 1, run_count INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS jobs (
+    id TEXT PRIMARY KEY, idempotency_key TEXT UNIQUE NOT NULL, type TEXT NOT NULL,
+    payload TEXT NOT NULL DEFAULT '{}', status TEXT NOT NULL DEFAULT 'queued',
+    attempts INTEGER NOT NULL DEFAULT 0, max_attempts INTEGER NOT NULL DEFAULT 5,
+    run_after TEXT NOT NULL, last_error TEXT, created_at TEXT NOT NULL, processed_at TEXT
+  );
+  CREATE INDEX IF NOT EXISTS idx_jobs_pick ON jobs(status, run_after);
+  CREATE TABLE IF NOT EXISTS email_templates (
+    id TEXT PRIMARY KEY, name TEXT NOT NULL, subject TEXT NOT NULL, body_html TEXT NOT NULL,
+    blocks TEXT,
+    created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS clients (
+    id TEXT PRIMARY KEY, name TEXT NOT NULL, contact_email TEXT,
+    active INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS email_log (
+    id TEXT PRIMARY KEY, job_id TEXT, ticket_id TEXT, to_addr TEXT NOT NULL, cc_addr TEXT,
+    provider TEXT NOT NULL, provider_msg_id TEXT, subject TEXT NOT NULL, body_html TEXT NOT NULL,
+    status TEXT NOT NULL, error TEXT, created_at TEXT NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS notifications (
+    id TEXT PRIMARY KEY, staff_id TEXT NOT NULL, ticket_id TEXT, message TEXT NOT NULL,
+    read_at TEXT, created_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_notif_staff ON notifications(staff_id, read_at);
+  CREATE TABLE IF NOT EXISTS attachments (
+    id TEXT PRIMARY KEY, ticket_id TEXT NOT NULL, file_name TEXT NOT NULL,
+    size_bytes INTEGER NOT NULL DEFAULT 0, path TEXT NOT NULL, driver TEXT NOT NULL DEFAULT 'local',
+    uploaded_by TEXT NOT NULL, created_at TEXT NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+  `);
+
+  // ترحيلات لطيفة لقواعد موجودة مسبقاً
+  try { db.exec("ALTER TABLE email_templates ADD COLUMN blocks TEXT"); } catch { /* العمود موجود */ }
+  try { db.exec("ALTER TABLE staff ADD COLUMN pin_hash TEXT"); } catch { /* العمود موجود */ }
+  try { db.exec("ALTER TABLE tickets ADD COLUMN custom_data TEXT NOT NULL DEFAULT '{}'"); } catch { /* العمود موجود */ }
+  try { db.exec("ALTER TABLE tickets ADD COLUMN tester_id TEXT"); } catch { /* موجود */ }
+  try { db.exec("ALTER TABLE tickets ADD COLUMN tester_name TEXT"); } catch { /* موجود */ }
+  try { db.exec("ALTER TABLE tickets ADD COLUMN est_hours REAL"); } catch { /* موجود */ }
+  try { db.exec("ALTER TABLE tickets ADD COLUMN est_days REAL"); } catch { /* موجود */ }
+  try { db.exec("ALTER TABLE tickets ADD COLUMN is_urgent INTEGER NOT NULL DEFAULT 0"); } catch { /* موجود */ }
+
+  // بذر العملاء مستقل عن بذر الموظفين (يعمل حتى على القواعد القديمة)
+  const clientCount = db.prepare("SELECT COUNT(*) c FROM clients").get() as { c: number };
+  if (clientCount.c === 0) {
+    const ins = db.prepare("INSERT INTO clients (id,name,contact_email,active,created_at) VALUES (?,?,?,1,?)");
+    const now = nowIso();
+    [
+      ["cl-nour", "شركة النور للتجارة", "client1@example.com"],
+      ["cl-amal", "مؤسسة الأمل", "client2@example.com"],
+      ["cl-future", "شركة المستقبل للتقنية", "client3@example.com"],
+      ["cl-reem", "استوديو ريم للتصميم", "client4@example.com"],
+    ].forEach(([id, name, email]) => ins.run(id, name, email, now));
+  }
+
+  // البذر الأول
+  const staffCount = db.prepare("SELECT COUNT(*) c FROM staff").get() as { c: number };
+  if (staffCount.c === 0) {
+    const seedAll = db.transaction(() => {
+      const insStaff = db.prepare("INSERT INTO staff (id,name,email,role,manager_id,active,created_at) VALUES (?,?,?,?,?,?,?)");
+      SEED_STAFF.forEach((s) => insStaff.run(s.id, s.name, s.email, s.role, s.manager_id, s.active, s.created_at));
+      const insTicket = db.prepare(`INSERT INTO tickets (id,code,client_name,client_contact,details,created_by,created_by_name,developer_id,developer_name,dev_status,source,last_status_change,created_at,updated_at)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
+      SEED_TICKETS.forEach((t) => insTicket.run(t.id, t.code, t.client_name, t.client_contact, t.details, t.created_by, t.created_by_name, t.developer_id, t.developer_name, t.dev_status, t.source, t.last_status_change, t.created_at, t.updated_at));
+      const insTmpl = db.prepare("INSERT INTO email_templates (id,name,subject,body_html,created_at,updated_at) VALUES (?,?,?,?,?,?)");
+      SEED_TEMPLATES.forEach((t) => insTmpl.run(t.id, t.name, t.subject, t.body_html, t.created_at, t.updated_at));
+      const insRule = db.prepare("INSERT INTO automation_rules (id,name,trigger_type,trigger_field,conditions,actions,enabled,run_count,created_at) VALUES (?,?,?,?,?,?,?,?,?)");
+      SEED_RULES.forEach((r) => insRule.run(r.id, r.name, r.trigger_type, r.trigger_field, JSON.stringify(r.conditions), JSON.stringify(r.actions), r.enabled, r.run_count, r.created_at));
+      const insSet = db.prepare("INSERT OR REPLACE INTO settings (key,value) VALUES (?,?)");
+      insSet.run("app_name", "بوابة الدعم الفني");
+      insSet.run("allow_guest_submit", "1");
+      insSet.run("sender_name", process.env.EMAIL_FROM_NAME || "الدعم الفني");
+      insSet.run("sender_email", process.env.EMAIL_FROM_ADDRESS || "");
+      insSet.run("stale_hours", process.env.STALE_HOURS || "24");
+      insSet.run("base_url", process.env.APP_BASE_URL || "http://localhost:3000");
+    });
+    seedAll();
+  }
+
+  const mapTemplate = (r: Omit<EmailTemplate, "blocks"> & { blocks: string | null }): EmailTemplate => ({
+    ...r,
+    blocks: r.blocks ? (JSON.parse(r.blocks) as EmailTemplate["blocks"]) : null,
+  });
+
+  const mapRule = (r: Record<string, unknown>): AutomationRule => ({
+    ...(r as unknown as AutomationRule),
+    conditions: JSON.parse((r.conditions as string) || "[]"),
+    actions: JSON.parse((r.actions as string) || "[]"),
+  });
+  const mapJob = (r: Record<string, unknown>): Job => ({
+    ...(r as unknown as Job),
+    payload: JSON.parse((r.payload as string) || "{}"),
+  });
+
+  type TicketRow = Omit<Ticket, "custom_data"> & { custom_data: string | null };
+  const mapTicket = (r: TicketRow): Ticket => {
+    let custom_data: Record<string, string> = {};
+    try { custom_data = r.custom_data ? (JSON.parse(r.custom_data) as Record<string, string>) : {}; } catch { /* فارغ */ }
+    return { ...(r as unknown as Ticket), custom_data };
+  };
+
+  const settingsGet: Repo["settingsGet"] = async () => {
+    const rows = db.prepare("SELECT key,value FROM settings").all() as { key: string; value: string }[];
+    const m = Object.fromEntries(rows.map((r) => [r.key, r.value]));
+    // مصمم النماذج: دمج المحفوظ فوق الافتراضي (حقول جديدة تظهر تلقائياً)
+    let form_fields: FormFieldCfg[] = DEFAULT_FORM_FIELDS;
+    if (m.form_fields) {
+      try {
+        const saved = JSON.parse(m.form_fields) as FormFieldCfg[];
+        form_fields = DEFAULT_FORM_FIELDS.map((d) => ({ ...d, ...(saved.find((s) => s.key === d.key) ?? {}) }));
+      } catch { /* الافتراضي */ }
+    }
+    // مصفوفة الصلاحيات: دمج المحفوظ فوق الافتراضي
+    let role_permissions: RolePermissions = DEFAULT_ROLE_PERMISSIONS;
+    if (m.role_permissions) {
+      try {
+        const saved = JSON.parse(m.role_permissions) as Partial<Record<Role, Partial<Record<PermKey, boolean>>>>;
+        role_permissions = (Object.keys(DEFAULT_ROLE_PERMISSIONS) as Role[]).reduce((acc, role) => {
+          acc[role] = { ...DEFAULT_ROLE_PERMISSIONS[role], ...(saved[role] ?? {}) };
+          return acc;
+        }, {} as RolePermissions);
+      } catch { /* الافتراضي */ }
+    }
+    // منشئ الحقول المخصصة
+    let custom_fields: CustomFieldCfg[] = [];
+    if (m.custom_fields) {
+      try {
+        const saved = JSON.parse(m.custom_fields) as CustomFieldCfg[];
+        if (Array.isArray(saved)) custom_fields = saved.filter((f) => f && typeof f.key === "string" && typeof f.label === "string");
+      } catch { /* الافتراضي */ }
+    }
+    // تحكم صفحة الاستعلام
+    let track_cfg: TrackPageCfg = DEFAULT_TRACK_CFG;
+    if (m.track_cfg) {
+      try { track_cfg = { ...DEFAULT_TRACK_CFG, ...(JSON.parse(m.track_cfg) as Partial<TrackPageCfg>) }; } catch { /* الافتراضي */ }
+    }
+    return {
+      app_name: m.app_name ?? "بوابة الدعم الفني",
+      allow_guest_submit: (m.allow_guest_submit ?? "1") === "1",
+      allow_track: (m.allow_track ?? "1") === "1",
+      allow_public_update: (m.allow_public_update ?? "1") === "1",
+      sender_name: m.sender_name ?? "الدعم الفني",
+      sender_email: m.sender_email ?? "",
+      stale_hours: parseInt(m.stale_hours ?? "24", 10) || 24,
+      base_url: (process.env.APP_BASE_URL || m.base_url || "http://localhost:3000").replace(/\/$/, ""),
+      form_fields,
+      role_permissions,
+      custom_fields,
+      track_cfg,
+    } as Settings;
+  };
+
+  return {
+    async staffList(activeOnly = false) {
+      const q = activeOnly ? "SELECT * FROM staff WHERE active=1 ORDER BY name" : "SELECT * FROM staff ORDER BY name";
+      return db.prepare(q).all() as Staff[];
+    },
+    async staffGet(id) {
+      return (db.prepare("SELECT * FROM staff WHERE id=?").get(id) as Staff) ?? null;
+    },
+    async staffByEmail(email) {
+      return (db.prepare("SELECT * FROM staff WHERE lower(email)=lower(?)").get(email) as Staff) ?? null;
+    },
+    async staffCreate(d) {
+      const s: Staff = { id: genId("st"), active: 1, created_at: nowIso(), ...d };
+      db.prepare("INSERT INTO staff (id,name,email,role,manager_id,active,created_at) VALUES (?,?,?,?,?,1,?)")
+        .run(s.id, s.name, s.email, s.role, s.manager_id, s.created_at);
+      return s;
+    },
+    async staffSetPin(id, pinHash) {
+      db.prepare("UPDATE staff SET pin_hash=? WHERE id=?").run(pinHash, id);
+    },
+    async staffUpdate(id, patch) {
+      const cur = await this.staffGet(id);
+      if (!cur) return;
+      const m = { ...cur, ...patch };
+      db.prepare("UPDATE staff SET name=?,email=?,role=?,manager_id=?,active=?,created_at=? WHERE id=?")
+        .run(m.name, m.email, m.role, m.manager_id, m.active, m.created_at, m.id);
+    },
+
+    settingsGet,
+    async settingsSet(patch) {
+      const ins = db.prepare("INSERT OR REPLACE INTO settings (key,value) VALUES (?,?)");
+      if (patch.app_name !== undefined) ins.run("app_name", patch.app_name);
+      if (patch.allow_guest_submit !== undefined) ins.run("allow_guest_submit", patch.allow_guest_submit ? "1" : "0");
+      if (patch.sender_name !== undefined) ins.run("sender_name", patch.sender_name);
+      if (patch.sender_email !== undefined) ins.run("sender_email", patch.sender_email);
+      if (patch.stale_hours !== undefined) ins.run("stale_hours", String(patch.stale_hours));
+      if (patch.base_url !== undefined) ins.run("base_url", patch.base_url);
+      if (patch.form_fields !== undefined) ins.run("form_fields", JSON.stringify(patch.form_fields));
+      if (patch.allow_track !== undefined) ins.run("allow_track", patch.allow_track ? "1" : "0");
+      if (patch.allow_public_update !== undefined) ins.run("allow_public_update", patch.allow_public_update ? "1" : "0");
+      if (patch.role_permissions !== undefined) ins.run("role_permissions", JSON.stringify(patch.role_permissions));
+      if (patch.custom_fields !== undefined) ins.run("custom_fields", JSON.stringify(patch.custom_fields));
+      if (patch.track_cfg !== undefined) ins.run("track_cfg", JSON.stringify(patch.track_cfg));
+    },
+    async settingsValueGet(key) {
+      const r = db.prepare("SELECT value FROM settings WHERE key=?").get(key) as { value: string } | undefined;
+      return r?.value ?? null;
+    },
+    async settingsValueSet(key, value) {
+      db.prepare("INSERT OR REPLACE INTO settings (key,value) VALUES (?,?)").run(key, value);
+    },
+
+    // ===== العملاء (القوائم المنسدلة) =====
+    async clientsList(activeOnly = false) {
+      const q = activeOnly
+        ? "SELECT * FROM clients WHERE active=1 ORDER BY name"
+        : "SELECT * FROM clients ORDER BY name";
+      return db.prepare(q).all() as Client[];
+    },
+    async clientSave(c) {
+      const now = nowIso();
+      if (c.id) {
+        db.prepare("UPDATE clients SET name=?, contact_email=? WHERE id=?")
+          .run(c.name, c.contact_email ?? null, c.id);
+        return db.prepare("SELECT * FROM clients WHERE id=?").get(c.id) as Client;
+      }
+      const id = genId("cl");
+      db.prepare("INSERT INTO clients (id,name,contact_email,active,created_at) VALUES (?,?,?,1,?)")
+        .run(id, c.name, c.contact_email ?? null, now);
+      return db.prepare("SELECT * FROM clients WHERE id=?").get(id) as Client;
+    },
+    async clientSetActive(id, active) {
+      db.prepare("UPDATE clients SET active=? WHERE id=?").run(active ? 1 : 0, id);
+    },
+    async clientDelete(id) {
+      db.prepare("DELETE FROM clients WHERE id=?").run(id);
+    },
+
+    async ticketCreate(input) {
+      const t = nowIso();
+      const ins = db.prepare(`INSERT INTO tickets (id,code,client_name,client_contact,details,created_by,created_by_name,developer_id,developer_name,dev_status,source,last_status_change,created_at,updated_at,custom_data,tester_id,tester_name,is_urgent)
+        VALUES (?,?,?,?,?,?,?,?,?,'new',?,?,?,?,?,?,?,?)`);
+      let code = input.code;
+      const row = { id: genId("tk") };
+      const customJson = JSON.stringify(input.custom_data ?? {});
+      for (let i = 0; i < 5; i++) {
+        try {
+          ins.run(row.id, code, input.client_name, input.client_contact, input.details, input.created_by, input.created_by_name, input.developer_id, input.developer_name, input.source, t, t, t, customJson,
+            input.tester_id ?? null, input.tester_name ?? null, input.is_urgent ? 1 : 0);
+          break;
+        } catch (e) {
+          if (String(e).includes("UNIQUE") && i < 4) { code = genTicketCode(); continue; }
+          throw e;
+        }
+      }
+      const r = db.prepare("SELECT * FROM tickets WHERE id=?").get(row.id) as TicketRow | undefined;
+      if (!r) throw new Error("تعذر إنشاء الطلب");
+      return mapTicket(r);
+    },
+    async ticketByCode(code) {
+      const r = db.prepare("SELECT * FROM tickets WHERE code=?").get(code) as TicketRow | undefined;
+      return r ? mapTicket(r) : null;
+    },
+    async ticketById(id) {
+      const r = db.prepare("SELECT * FROM tickets WHERE id=?").get(id) as TicketRow | undefined;
+      return r ? mapTicket(r) : null;
+    },
+    async ticketList(f: TicketFilter) {
+      const where: string[] = [];
+      const args: unknown[] = [];
+      if (f.q) { where.push("(code LIKE ? OR client_name LIKE ?)"); args.push(`%${f.q}%`, `%${f.q}%`); }
+      if (f.status) { where.push("dev_status=?"); args.push(f.status); }
+      if (f.developer_id) { where.push("developer_id=?"); args.push(f.developer_id); }
+      if (f.source) { where.push("source=?"); args.push(f.source); }
+      if (f.involvesStaffId) {
+        where.push("(created_by=? OR developer_id=? OR tester_id=? OR (tester_id IS NULL AND developer_id IS NULL))");
+        args.push(f.involvesStaffId, f.involvesStaffId, f.involvesStaffId);
+      }
+      if (f.staleOlderThanHours) {
+        const cutoff = new Date(Date.now() - f.staleOlderThanHours * 3600000).toISOString();
+        where.push("last_status_change < ?"); args.push(cutoff);
+      }
+      const w = where.length ? `WHERE ${where.join(" AND ")}` : "";
+      const total = (db.prepare(`SELECT COUNT(*) c FROM tickets ${w}`).get(...args) as { c: number }).c;
+      const page = f.page ?? 1, size = f.pageSize ?? 15;
+      const rows = (db.prepare(`SELECT * FROM tickets ${w} ORDER BY created_at DESC LIMIT ? OFFSET ?`)
+        .all(...args, size, (page - 1) * size) as TicketRow[]).map(mapTicket);
+      return { rows, total };
+    },
+    async ticketUpdate(id, patch) {
+      const sets: string[] = [];
+      const args: unknown[] = [];
+      const fields = ["client_name", "client_contact", "details", "developer_id", "developer_name", "dev_status", "last_status_change", "updated_at", "tester_id", "tester_name", "est_hours", "est_days", "is_urgent"] as const;
+      for (const k of fields) {
+        if (patch[k] !== undefined) { sets.push(`${k}=?`); args.push(patch[k] as unknown); }
+      }
+      if (sets.length) {
+        args.push(id);
+        db.prepare(`UPDATE tickets SET ${sets.join(",")} WHERE id=?`).run(...args);
+      }
+      return this.ticketById(id);
+    },
+    async ticketCounts() {
+      const rows = db.prepare("SELECT dev_status, COUNT(*) c FROM tickets GROUP BY dev_status").all() as { dev_status: string; c: number }[];
+      const byStatus: Record<string, number> = {};
+      let total = 0;
+      rows.forEach((r) => { byStatus[r.dev_status] = r.c; total += r.c; });
+      return { total, byStatus };
+    },
+
+    async eventAdd(e) {
+      const t = nowIso();
+      const r = db.prepare("INSERT INTO events (ticket_id,type,actor_label,old_values,new_values,created_at) VALUES (?,?,?,?,?,?)")
+        .run(e.ticket_id, e.type, e.actor_label, e.old_values ? JSON.stringify(e.old_values) : null, e.new_values ? JSON.stringify(e.new_values) : null, t);
+      return { id: Number(r.lastInsertRowid), created_at: t, ...e } as TicketEvent;
+    },
+    async eventList(ticketId) {
+      const rows = db.prepare("SELECT * FROM events WHERE ticket_id=? ORDER BY id DESC").all(ticketId) as Record<string, unknown>[];
+      return rows.map((r) => ({
+        ...(r as unknown as TicketEvent),
+        old_values: r.old_values ? JSON.parse(r.old_values as string) : null,
+        new_values: r.new_values ? JSON.parse(r.new_values as string) : null,
+      }));
+    },
+
+    async rulesList() {
+      return (db.prepare("SELECT * FROM automation_rules ORDER BY created_at").all() as Record<string, unknown>[]).map(mapRule);
+    },
+    async rulesEnabled() {
+      return (db.prepare("SELECT * FROM automation_rules WHERE enabled=1").all() as Record<string, unknown>[]).map(mapRule);
+    },
+    async ruleUpsert(r) {
+      const t = nowIso();
+      if (r.id) {
+        db.prepare("UPDATE automation_rules SET name=?,trigger_type=?,trigger_field=?,conditions=?,actions=?,enabled=? WHERE id=?")
+          .run(r.name, r.trigger_type, r.trigger_field, JSON.stringify(r.conditions), JSON.stringify(r.actions), r.enabled, r.id);
+        return mapRule(db.prepare("SELECT * FROM automation_rules WHERE id=?").get(r.id) as Record<string, unknown>);
+      }
+      const id = genId("rule");
+      db.prepare("INSERT INTO automation_rules (id,name,trigger_type,trigger_field,conditions,actions,enabled,run_count,created_at) VALUES (?,?,?,?,?,?,?,0,?)")
+        .run(id, r.name, r.trigger_type, r.trigger_field, JSON.stringify(r.conditions), JSON.stringify(r.actions), r.enabled, t);
+      return mapRule(db.prepare("SELECT * FROM automation_rules WHERE id=?").get(id) as Record<string, unknown>);
+    },
+    async ruleDelete(id) {
+      db.prepare("DELETE FROM automation_rules WHERE id=?").run(id);
+    },
+    async ruleBump(id) {
+      db.prepare("UPDATE automation_rules SET run_count=run_count+1 WHERE id=?").run(id);
+    },
+
+    async jobEnqueue(j) {
+      try {
+        const runAfter = new Date(Date.now() + (j.delaySeconds ?? 0) * 1000).toISOString();
+        db.prepare("INSERT INTO jobs (id,idempotency_key,type,payload,status,attempts,max_attempts,run_after,created_at) VALUES (?,?,?,?,'queued',0,5,?,?)")
+          .run(genId("job"), j.idempotency_key, j.type, JSON.stringify(j.payload), runAfter, nowIso());
+        return "created";
+      } catch (e) {
+        if (String(e).includes("UNIQUE")) return "dup";
+        throw e;
+      }
+    },
+    async jobsDue(limit) {
+      const rows = db.prepare("SELECT * FROM jobs WHERE status='queued' AND run_after<=? ORDER BY run_after LIMIT ?")
+        .all(nowIso(), limit) as Record<string, unknown>[];
+      return rows.map(mapJob);
+    },
+    async jobClaim(id) {
+      const r = db.prepare("UPDATE jobs SET status='processing' WHERE id=? AND status='queued'").run(id);
+      return r.changes > 0;
+    },
+    async jobDone(id) {
+      db.prepare("UPDATE jobs SET status='done', processed_at=? WHERE id=?").run(nowIso(), id);
+    },
+    async jobFail(id, err, retryAtIso) {
+      if (retryAtIso) {
+        db.prepare("UPDATE jobs SET status='queued', attempts=attempts+1, run_after=?, last_error=? WHERE id=?").run(retryAtIso, err, id);
+      } else {
+        db.prepare("UPDATE jobs SET status='dead', attempts=attempts+1, last_error=?, processed_at=? WHERE id=?").run(err, nowIso(), id);
+      }
+    },
+
+    async templateList() {
+      const rows = db.prepare("SELECT * FROM email_templates ORDER BY name").all() as (Omit<EmailTemplate, "blocks"> & { blocks: string | null })[];
+      return rows.map(mapTemplate);
+    },
+    async templateGet(id) {
+      const r = db.prepare("SELECT * FROM email_templates WHERE id=?").get(id) as (Omit<EmailTemplate, "blocks"> & { blocks: string | null }) | undefined;
+      return r ? mapTemplate(r) : null;
+    },
+    async templateUpsert(t) {
+      const now = nowIso();
+      const blocksJson = t.blocks === undefined ? undefined : t.blocks === null ? null : JSON.stringify(t.blocks);
+      if (t.id) {
+        if (blocksJson !== undefined) {
+          db.prepare("UPDATE email_templates SET name=?,subject=?,body_html=?,blocks=?,updated_at=? WHERE id=?")
+            .run(t.name, t.subject, t.body_html, blocksJson, now, t.id);
+        } else {
+          db.prepare("UPDATE email_templates SET name=?,subject=?,body_html=?,updated_at=? WHERE id=?")
+            .run(t.name, t.subject, t.body_html, now, t.id);
+        }
+        return mapTemplate(db.prepare("SELECT * FROM email_templates WHERE id=?").get(t.id) as Omit<EmailTemplate, "blocks"> & { blocks: string | null });
+      }
+      const id = genId("tmpl");
+      db.prepare("INSERT INTO email_templates (id,name,subject,body_html,blocks,created_at,updated_at) VALUES (?,?,?,?,?,?,?)")
+        .run(id, t.name, t.subject, t.body_html, blocksJson ?? null, now, now);
+      return mapTemplate(db.prepare("SELECT * FROM email_templates WHERE id=?").get(id) as Omit<EmailTemplate, "blocks"> & { blocks: string | null });
+    },
+    async templateDelete(id) {
+      db.prepare("DELETE FROM email_templates WHERE id=?").run(id);
+    },
+
+    async emailLogAdd(e) {
+      const row: EmailLog = { id: e.id ?? genId("eml"), created_at: nowIso(), ...e } as EmailLog;
+      db.prepare(`INSERT INTO email_log (id,job_id,ticket_id,to_addr,cc_addr,provider,provider_msg_id,subject,body_html,status,error,created_at)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`)
+        .run(row.id, row.job_id, row.ticket_id, row.to_addr, row.cc_addr, row.provider, row.provider_msg_id, row.subject, row.body_html, row.status, row.error, row.created_at);
+      return row;
+    },
+    async emailLogSetProvider(id, provider, msgId, status, error = null) {
+      db.prepare("UPDATE email_log SET provider=?, provider_msg_id=?, status=?, error=? WHERE id=?").run(provider, msgId, status, error, id);
+    },
+    async emailLogSetStatusByMsg(msgId, status, error = null) {
+      db.prepare("UPDATE email_log SET status=?, error=? WHERE provider_msg_id=?").run(status, error, msgId);
+    },
+    async emailLogList(page = 1, pageSize = 20, ticketId) {
+      const w = ticketId ? "WHERE ticket_id=?" : "";
+      const args = ticketId ? [ticketId] : [];
+      const total = (db.prepare(`SELECT COUNT(*) c FROM email_log ${w}`).get(...args) as { c: number }).c;
+      const rows = db.prepare(`SELECT * FROM email_log ${w} ORDER BY created_at DESC LIMIT ? OFFSET ?`)
+        .all(...args, pageSize, (page - 1) * pageSize) as EmailLog[];
+      return { rows, total };
+    },
+
+    async notifyAdd(n) {
+      db.prepare("INSERT INTO notifications (id,staff_id,ticket_id,message,read_at,created_at) VALUES (?,?,?,?,NULL,?)")
+        .run(genId("ntf"), n.staff_id, n.ticket_id, n.message, nowIso());
+    },
+    async notificationsList(staffId) {
+      return db.prepare("SELECT * FROM notifications WHERE staff_id=? ORDER BY created_at DESC LIMIT 50").all(staffId) as Notification[];
+    },
+    async notificationsUnread(staffId) {
+      return (db.prepare("SELECT COUNT(*) c FROM notifications WHERE staff_id=? AND read_at IS NULL").get(staffId) as { c: number }).c;
+    },
+    async notificationsMarkRead(staffId) {
+      db.prepare("UPDATE notifications SET read_at=? WHERE staff_id=? AND read_at IS NULL").run(nowIso(), staffId);
+    },
+
+    async attachmentAdd(a) {
+      const row: Attachment = { ...a, created_at: nowIso() };
+      db.prepare("INSERT INTO attachments (id,ticket_id,file_name,size_bytes,path,driver,uploaded_by,created_at) VALUES (?,?,?,?,?,?,?,?)")
+        .run(row.id, row.ticket_id, row.file_name, row.size_bytes, row.path, row.driver, row.uploaded_by, row.created_at);
+      return row;
+    },
+    async attachmentList(ticketId) {
+      return db.prepare("SELECT * FROM attachments WHERE ticket_id=? ORDER BY created_at DESC").all(ticketId) as Attachment[];
+    },
+    async attachmentGet(id) {
+      return (db.prepare("SELECT * FROM attachments WHERE id=?").get(id) as Attachment) ?? null;
+    },
+  };
+}

@@ -1,0 +1,116 @@
+import { escapeHtml } from "./util";
+import type { Settings, TemplateBlocks, Ticket } from "./types";
+import { STATUS_LABELS } from "./labels";
+import type { DevStatus } from "./types";
+
+export const BLOCK_LABELS: Record<keyof TemplateBlocks, string> = {
+  status: "شارة الحالة الحالية (مع الحالة السابقة)",
+  client: "بيانات العميل",
+  developer: "المطور المسند",
+  details: "تفاصيل الطلب",
+  note: "آخر ملاحظة",
+  track_button: "زر «تتبع حالة الطلب»",
+  update_button: "زر «تحديث الحالة»",
+};
+
+// محرك قوالب بسيط وآمن: {{ticket.client_name}} {{status_label}} ...
+export function renderTemplate(
+  text: string,
+  vars: Record<string, string>,
+  { htmlEscape = true }: { htmlEscape?: boolean } = {},
+): string {
+  return text.replace(/\{\{\s*([\w.]+)\s*\}\}/g, (_, key: string) => {
+    const v = vars[key];
+    if (v === undefined || v === null) return "";
+    return htmlEscape ? escapeHtml(String(v)) : String(v);
+  });
+}
+
+export function templateVars(
+  ticket: Ticket,
+  settings: Settings,
+  extra?: { old_status?: string | null; note?: string | null },
+): Record<string, string> {
+  const base = settings.base_url.replace(/\/$/, "");
+  return {
+    "ticket.code": ticket.code,
+    "ticket.client_name": ticket.client_name,
+    "ticket.details": ticket.details,
+    "ticket.developer_name": ticket.developer_name ?? "غير محدد",
+    "ticket.created_by_name": ticket.created_by_name,
+    code: ticket.code,
+    client_name: ticket.client_name,
+    developer_name: ticket.developer_name ?? "غير محدد",
+    created_by_name: ticket.created_by_name,
+    status: ticket.dev_status,
+    status_label: STATUS_LABELS[ticket.dev_status as DevStatus] ?? ticket.dev_status,
+    old_status_label: extra?.old_status
+      ? STATUS_LABELS[extra.old_status as DevStatus] ?? extra.old_status
+      : "",
+    note: extra?.note ?? "",
+    track_url: `${base}/track?code=${encodeURIComponent(ticket.code)}`,
+    update_url: `${base}/update-form?code=${encodeURIComponent(ticket.code)}`,
+    app_name: settings.app_name,
+  };
+}
+
+// بناء جسم الإيميل من الأقسام المرئية — الأدمن يفعّل/يعطّل كل قسم من محرر القالب
+export function renderBlocks(
+  vars: Record<string, string>,
+  blocks: TemplateBlocks,
+  introHtml: string,
+): string {
+  const esc = escapeHtml;
+  const row = (label: string, value: string) =>
+    `<tr><td style="padding:8px 14px;color:#64748b;font-size:13px;white-space:nowrap;border-bottom:1px solid #e2e8f0;vertical-align:top">${label}</td>` +
+    `<td style="padding:8px 14px;border-bottom:1px solid #e2e8f0;font-size:14px;color:#0f172a">${value}</td></tr>`;
+
+  let info = row("كود الطلب", `<b dir="ltr" style="font-family:monospace">${esc(vars.code)}</b>`);
+  if (blocks.status) {
+    info += row(
+      "الحالة الحالية",
+      `<span style="display:inline-block;background:#dbeafe;color:#1e40af;border-radius:999px;padding:2px 12px;font-size:13px;font-weight:700">${esc(vars.status_label)}</span>` +
+        (vars.old_status_label ? ` <span style="color:#94a3b8;font-size:12px">(كانت: ${esc(vars.old_status_label)})</span>` : ""),
+    );
+  }
+  if (blocks.client) info += row("العميل", esc(vars.client_name));
+  if (blocks.developer) info += row("المطور المسند", esc(vars.developer_name));
+
+  let html = "";
+  if (introHtml.trim()) html += `<p style="margin:0 0 14px">${introHtml}</p>`;
+  html += `<table role="presentation" style="width:100%;border-collapse:collapse;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden">${info}</table>`;
+
+  const section = (title: string, body: string) =>
+    `<div style="margin-top:14px"><div style="font-size:13px;font-weight:700;color:#475569;margin-bottom:4px">${title}</div>` +
+    `<div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:12px 14px;font-size:14px;color:#0f172a;line-height:1.9">${body}</div></div>`;
+
+  if (blocks.details && vars["ticket.details"]) {
+    html += section("تفاصيل الطلب", esc(vars["ticket.details"]).replace(/\n/g, "<br>"));
+  }
+  if (blocks.note && vars.note) {
+    html += section("آخر ملاحظة", esc(vars.note).replace(/\n/g, "<br>"));
+  }
+
+  const btn = (href: string, label: string, bg: string) =>
+    `<a href="${esc(href)}" style="display:inline-block;background:${bg};color:#ffffff;text-decoration:none;border-radius:10px;padding:10px 18px;font-size:14px;font-weight:700;margin:4px 0 0 8px">${label}</a>`;
+  let buttons = "";
+  if (blocks.track_button) buttons += btn(vars.track_url, "🔍 تتبع حالة الطلب", "#1d4ed8");
+  if (blocks.update_button) buttons += btn(vars.update_url, "✏️ تحديث حالة الطلب", "#0f766e");
+  if (buttons) html += `<div style="margin-top:18px">${buttons}</div>`;
+
+  return html;
+}
+
+// غلاف عربي RTL موحّد لكل الإيميلات
+export function wrapEmail(subject: string, bodyHtml: string, settings: Settings): string {
+  return `<!doctype html><html dir="rtl" lang="ar"><head><meta charset="utf-8"><title>${escapeHtml(subject)}</title></head>
+<body style="margin:0;padding:0;background:#f1f5f9;font-family:'Segoe UI',Tahoma,Arial,sans-serif;">
+  <div style="max-width:620px;margin:24px auto;background:#ffffff;border-radius:12px;overflow:hidden;border:1px solid #e2e8f0;">
+    <div style="background:#0f172a;color:#fff;padding:16px 24px;font-size:18px;font-weight:700;">${escapeHtml(settings.app_name)}</div>
+    <div style="padding:24px;line-height:1.8;color:#0f172a;font-size:15px;">${bodyHtml}</div>
+    <div style="padding:14px 24px;background:#f8fafc;color:#64748b;font-size:12px;border-top:1px solid #e2e8f0;">
+      هذا البريد أُرسل تلقائياً من نظام ${escapeHtml(settings.app_name)} — لا ترد على هذه الرسالة.
+    </div>
+  </div>
+</body></html>`;
+}

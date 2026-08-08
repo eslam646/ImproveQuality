@@ -1,0 +1,20 @@
+name = "support-hub"
+compatibility_date = "2026-01-01"
+compatibility_flags = ["nodejs_compat"]
+main = ".open-next/worker.js"
+
+assets = { directory = ".open-next/assets", binding = "ASSETS" }
+
+[vars]
+DB_DRIVER = "supabase"
+AUTH_MODE = "pin"
+SUPABASE_URL = "https://evhjaotzbgiwesvlnzfu.supabase.co"
+APP_BASE_URL = "https://support-hub.eslamnasser796.workers.dev"
+EMAIL_FROM_NAME = "الدعم الفني"
+EMAIL_FROM_ADDRESS = "eslamnasser796@gmail.com"
+STALE_HOURS = "24"
+# الأسرار (تُضبط عبر wrangler secret put):
+# SUPABASE_SERVICE_ROLE_KEY / SUPABASE_ANON_KEY / WORKER_SECRET / BREVO_API_KEY
+
+[observability.logs]
+enabled = true

@@ -1,0 +1,18 @@
+# انسخه إلى wrangler.toml وعدّل القيم — التفاصيل الكاملة في README
+name = "support-hub"
+compatibility_date = "2026-01-01"
+compatibility_flags = ["nodejs_compat"]
+pages_build_output_dir = ".open-next" # أو استخدم workers بناءً على ناتج @opennextjs/cloudflare
+
+[vars]
+DB_DRIVER = "supabase"
+AUTH_MODE = "supabase"
+EMAIL_FROM_NAME = "الدعم الفني"
+APP_BASE_URL = "https://support-hub.YOUR-SUBDOMAIN.workers.dev"
+
+# الأسرار تُضبط بأوامر (لا تكتبها هنا):
+# npx wrangler secret put SUPABASE_SERVICE_ROLE_KEY
+# npx wrangler secret put SUPABASE_URL
+# npx wrangler secret put SUPABASE_ANON_KEY
+# npx wrangler secret put BREVO_API_KEY
+# npx wrangler secret put WORKER_SECRET

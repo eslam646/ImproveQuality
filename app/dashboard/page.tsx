@@ -1,0 +1,136 @@
+import Link from "next/link";
+import { getRepo } from "@/lib/db";
+import { requireStaff, canManage, permissionsOf } from "@/lib/auth";
+import { TicketsTable } from "@/components/tickets-table";
+import { ALL_STATUSES, FINAL_STATUSES, STATUS_LABELS } from "@/lib/labels";
+import { Button, inputCls, selectCls } from "@/components/ui";
+import type { DevStatus } from "@/lib/types";
+
+export const dynamic = "force-dynamic";
+
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | undefined>>;
+}) {
+  const actor = await requireStaff();
+  const sp = await searchParams;
+  const repo = await getRepo();
+  const manage = canManage(actor);
+  const perms = await permissionsOf(actor.role);
+  const canNewTicket = manage && (perms.new_ticket ?? false);
+  const canExport = manage && (perms.export_csv ?? false);
+
+  const page = Math.max(1, parseInt(sp.page ?? "1", 10) || 1);
+  const q = sp.q ?? "";
+  const status = (sp.status ?? "") as DevStatus | "";
+  const developer_id = sp.developer_id ?? "";
+  // المطور يرى تذاكره فقط دائماً — بدون خيار عرض الكل
+  const mine = actor.role === "developer";
+
+  const devs = manage
+    ? (await repo.staffList(true)).filter((s) => s.role === "developer")
+    : [];
+  const [{ rows, total }, counts] = await Promise.all([
+    repo.ticketList({
+      q: q || undefined,
+      status: status || undefined,
+      developer_id: mine ? actor.id : developer_id || undefined,
+      // مدخل البيانات يشوف ما يخصّه فقط (أنشأه/مُسند له كمطوّر أو التيست/جديد غير مُسنَد)
+      involvesStaffId: actor.role === "support" ? actor.id : undefined,
+      page, pageSize: 15,
+    }),
+    repo.ticketCounts(),
+  ]);
+
+  const openCount = Object.entries(counts.byStatus)
+    .filter(([s]) => !FINAL_STATUSES.includes(s as DevStatus))
+    .reduce((a, [, c]) => a + c, 0);
+  const staleCutoff = Date.now() - 24 * 3600000;
+  const stale = rows.filter((t) => new Date(t.last_status_change).getTime() < staleCutoff && !FINAL_STATUSES.includes(t.dev_status)).length;
+
+  const totalPages = Math.max(1, Math.ceil(total / 15));
+  const mkLink = (p: number) => {
+    const u = new URLSearchParams();
+    if (q) u.set("q", q);
+    if (status) u.set("status", status);
+    if (developer_id) u.set("developer_id", developer_id);
+    if (sp.mine) u.set("mine", sp.mine);
+    u.set("page", String(p));
+    return `/dashboard?${u.toString()}`;
+  };
+
+  return (
+    <div className="space-y-5">
+      {sp.denied && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          ⛔ صلاحية الوصول لهذه الصفحة غير مفعّلة لدورك — راجع مدير النظام لو تحتاجها.
+        </div>
+      )}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-extrabold">تذاكر الدعم الفني</h1>
+          <p className="text-sm text-slate-500">
+            {manage ? "صلاحية كاملة: إنشاء وتعيين وتحديث" : actor.role === "tester" ? "عرض فقط — نتائج الاختبار من واجهة الاختبار" : "واجهة قراءة فقط (تحديث الحالة يتم عبر نموذج التحديث العام بالكود)"}
+          </p>
+        </div>
+        <div className="flex gap-2">
+          {actor.role === "developer" && (
+            <span className="rounded-lg bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-500">تذاكري المُسندة إليّ فقط</span>
+          )}
+          {canNewTicket && (
+            <Link href="/tickets/new" className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-bold text-white hover:bg-blue-700">+ طلب جديد</Link>
+          )}
+        </div>
+      </div>
+
+      {/* إحصاءات */}
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+        {[
+          { label: "إجمالي التذاكر", val: counts.total, cls: "bg-white text-slate-800" },
+          { label: "مفتوحة", val: openCount, cls: "bg-blue-600 text-white" },
+          { label: "بانتظار الاختبار", val: counts.byStatus.ready_for_test ?? 0, cls: "bg-purple-600 text-white" },
+          { label: "متوقفة > ٢٤ ساعة", val: stale, cls: "bg-amber-500 text-white" },
+        ].map((c) => (
+          <div key={c.label} className={`rounded-xl p-4 shadow-sm ${c.cls}`}>
+            <div className="text-3xl font-extrabold">{c.val}</div>
+            <div className="text-sm opacity-90">{c.label}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* الفلاتر */}
+      <form method="GET" className="flex flex-wrap items-end gap-2 rounded-xl border border-slate-200 bg-white p-4">
+        <input name="q" defaultValue={q} placeholder="بحث بالكود أو اسم العميل…" className={`${inputCls} max-w-xs`} />
+        <select name="status" defaultValue={status} className={`${selectCls} max-w-48`}>
+          <option value="">كل الحالات</option>
+          {ALL_STATUSES.map((s) => <option key={s} value={s}>{STATUS_LABELS[s]}</option>)}
+        </select>
+        {manage && (
+          <select name="developer_id" defaultValue={developer_id} className={`${selectCls} max-w-48`}>
+            <option value="">كل المطورين</option>
+            {devs.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+          </select>
+        )}
+        <Button type="submit">تصفية</Button>
+        <Link href="/dashboard" className="rounded-lg px-3 py-2 text-sm text-slate-500 hover:bg-slate-100">مسح</Link>
+        {canExport && (
+          <a href="/api/export.csv" className="mr-auto rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700">
+            تصدير Excel/CSV ⬇
+          </a>
+        )}
+      </form>
+
+      <TicketsTable rows={rows} readOnlyNote={manage ? undefined : actor.role === "developer" ? "🔒 وضع القراءة فقط — بيانات الحسّاسة محمية، والتحديث عبر كود الطلب في نموذج التحديث." : undefined} />
+
+      {/* ترقيم الصفحات */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-center gap-2 text-sm">
+          {page > 1 && <Link className="rounded-lg bg-white px-3 py-1.5 shadow-sm" href={mkLink(page - 1)}>→ السابق</Link>}
+          <span className="text-slate-500">صفحة {page} من {totalPages} ({total} تذكرة)</span>
+          {page < totalPages && <Link className="rounded-lg bg-white px-3 py-1.5 shadow-sm" href={mkLink(page + 1)}>التالي ←</Link>}
+        </div>
+      )}
+    </div>
+  );
+}
