@@ -84,6 +84,21 @@ export default async function DashboardPage({
         </div>
       </div>
 
+      {canNewTicket && (
+        <Link
+          href="/instant-support"
+          className="block rounded-2xl border border-rose-300 bg-gradient-to-l from-rose-600 to-orange-500 p-5 text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+        >
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <div className="text-xl font-extrabold">🚨 الدعم الفوري</div>
+              <p className="mt-1 text-sm text-rose-50">مشكلة طارئة على السيرفر؟ حدّد العميل والتيست والمطور وأرسل التكليف لهم فورًا.</p>
+            </div>
+            <span className="shrink-0 rounded-xl bg-white/20 px-4 py-2 text-sm font-bold">فتح النموذج ←</span>
+          </div>
+        </Link>
+      )}
+
       {/* إحصاءات */}
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         {[

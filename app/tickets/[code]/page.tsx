@@ -223,13 +223,13 @@ export default async function TicketDetailsPage({
                   </form>
                 )}
 
-                {(isAssignedTester || isAssignedDev) && (
-                  <form action={declineAssignmentAction} className="space-y-2 rounded-xl border border-rose-100 bg-rose-50/40 p-3">
+                {!!ticket.is_urgent && (isAssignedTester || isAssignedDev) && (
+                  <form action={declineAssignmentAction} className="space-y-2 rounded-xl border border-rose-200 bg-rose-50 p-3">
                     <input type="hidden" name="code" value={ticket.code} />
-                    <Field label={`الاعتذار عن المهمة (أنت ${isAssignedTester ? "التيست" : "المطوّر"} المسند)`} hint="السبب إجباري — يصل إيميل لمدخل البيانات والإدارة، وتعود المهمة لغير المُسندة">
-                      <input name="reason" required minLength={3} placeholder="مثال: مش متاح حالياً — عندي تسليم عاجل آخر…" className={inputCls} />
+                    <Field label={`الاعتذار عن الدعم الفوري (أنت ${isAssignedTester ? "التيست" : "المطوّر"} المسند)`} hint="خاص بالدعم الفوري فقط — السبب إجباري، ويصل إيميل لمقدم الطلب والإدارة ثم تعود المهمة لإعادة الإسناد">
+                      <input name="reason" required minLength={3} placeholder="مثال: غير متاح حاليًا بسبب عطل آخر عاجل…" className={inputCls} />
                     </Field>
-                    <Button type="submit" variant="secondary">🙅 اعتذار عن المهمة</Button>
+                    <Button type="submit" variant="secondary">🙅 الاعتذار عن الدعم الفوري</Button>
                   </form>
                 )}
 
@@ -241,10 +241,10 @@ export default async function TicketDetailsPage({
 
                 <form action={addNoteAction} className="space-y-2 border-t border-slate-100 pt-4">
                   <input type="hidden" name="code" value={ticket.code} />
-                  <Field label={`${noteLabel} / رد`} hint="تُرسل بالإيميل لكل أطراف الطلب (مدخل البيانات ↔ التيست ↔ الديف) مع توقيت الإرسال">
-                    <textarea name="note" required minLength={2} rows={2} placeholder="اكتب ملاحظتك أو ردّك هنا…" className={inputCls} />
+                  <Field label={`${noteLabel} / رد`} hint="مقدم الطلب والتيست والمطور يكتبون ما يريدون هنا؛ تُرسل الملاحظة بالإيميل لكل المسؤولين عن الطلب ما عدا كاتبها، مع التاريخ والتوقيت">
+                    <textarea name="note" required minLength={2} rows={3} placeholder="اكتب ملاحظتك أو طلبك أو ردك بالتفصيل…" className={inputCls} />
                   </Field>
-                  <Button type="submit" variant="secondary">إرسال للكل 💬</Button>
+                  <Button type="submit" variant="secondary">إرسال الملاحظة للمسؤولين 💬</Button>
                 </form>
               </div>
             </Card>

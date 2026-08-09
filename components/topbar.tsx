@@ -19,6 +19,7 @@ export async function Topbar() {
   const links = [
     { href: "/dashboard", label: "التذاكر", perm: "dashboard" as PermKey },
     { href: "/tickets/new", label: "+ طلب جديد", perm: "new_ticket" as PermKey },
+    { href: "/instant-support", label: "🚨 دعم فوري", perm: "new_ticket" as PermKey },
     { href: "/testing", label: "واجهة الاختبار", perm: "testing" as PermKey },
     { href: "/automation", label: "الأتمتة", perm: "automation" as PermKey },
     { href: "/templates", label: "القوالب", perm: "templates" as PermKey },

@@ -242,6 +242,7 @@ export async function declineAssignmentOp(
   const repo = await getRepo();
   const t = await repo.ticketById(ticketId);
   if (!t) return { ok: false, error: "الطلب غير موجود" };
+  if (!t.is_urgent) return { ok: false, error: "الاعتذار متاح لطلبات الدعم الفوري فقط" };
   const actorLabel = `${actor.name} (${ROLE_LABELS[actor.role]})`;
 
   const isTester = actor.role === "tester" && t.tester_id === actor.staff_id;

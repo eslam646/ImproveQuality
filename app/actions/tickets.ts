@@ -86,6 +86,45 @@ export async function createTicketAction(formData: FormData) {
   redirect(`/tickets/${ticket.code}?created=1`);
 }
 
+// ═══ دعم فوري — مسار مستقل، ويشترط تعيين التيست والمطور ═══
+export async function createInstantSupportAction(formData: FormData) {
+  const actor = await requirePerm("new_ticket");
+  const repo = await getRepo();
+  const client_id = String(formData.get("client_id") ?? "").trim();
+  let client_name = String(formData.get("client_name") ?? "").trim();
+  let client_contact = String(formData.get("client_contact") ?? "").trim();
+  const details = String(formData.get("details") ?? "").trim();
+  const tester_id = String(formData.get("tester_id") ?? "").trim();
+  const developer_id = String(formData.get("developer_id") ?? "").trim();
+  const fail = (msg: string): never => redirect(`/instant-support?err=${enc(msg)}`);
+
+  if (client_id) {
+    const c = (await repo.clientsList()).find((x) => x.id === client_id);
+    if (c) {
+      client_name = c.name;
+      if (!client_contact && c.contact_email) client_contact = c.contact_email;
+    }
+  }
+  if (client_name.length < 2) fail("اختر العميل أو اكتب اسمه");
+  if (details.length < 5) fail("اكتب تفاصيل المشكلة الطارئة بوضوح");
+  if (!tester_id) fail("اختيار مسؤول الاختبار إجباري في الدعم الفوري");
+  if (!developer_id) fail("اختيار المطور إجباري في الدعم الفوري");
+
+  const ticket = await createTicketOp({
+    client_name,
+    client_contact: client_contact || null,
+    details,
+    tester_id,
+    developer_id,
+    is_urgent: true,
+    actor: { staff_id: actor.id, label: labelOf(actor) },
+    source: "internal",
+  });
+  await setEstimationOp(ticket.id, estFromForm(formData));
+  revalidatePath("/dashboard");
+  redirect(`/tickets/${ticket.code}?created=1&ok=${enc("تم إنشاء طلب الدعم الفوري وإرسال التكليف للتيست والمطور ✓")}`);
+}
+
 // ═══ إسناد التيست (أولاً دائماً) + تقدير التنفيذ ═══
 export async function assignTesterAction(formData: FormData) {
   const actor = await requireStaff(["admin", "support"]);
@@ -138,8 +177,11 @@ export async function declineAssignmentAction(formData: FormData) {
   const repo = await getRepo();
   const t = await repo.ticketByCode(code);
   if (!t) redirect("/dashboard");
+  if (!t.is_urgent) {
+    redirect(`/tickets/${code}?err=${enc("الاعتذار متاح لطلبات الدعم الفوري فقط — التذاكر العادية تُدار بتغيير الحالة والملاحظات")}`);
+  }
   if (reason.length < 3) {
-    redirect(`/tickets/${code}?err=${enc("سبب الاعتذار إجباري — اكتبه بوضوح ليصل لمدخل البيانات والإدارة")}`);
+    redirect(`/tickets/${code}?err=${enc("سبب الاعتذار إجباري — اكتبه بوضوح ليصل لمقدم الطلب والإدارة")}`);
   }
   const r = await declineAssignmentOp(t.id, { staff_id: actor.id, name: actor.name, role: actor.role }, reason);
   revalidatePath(`/tickets/${code}`);
@@ -206,7 +248,12 @@ export async function addNoteAction(formData: FormData) {
   const note = String(formData.get("note") ?? "").trim();
   const repo = await getRepo();
   const t = await repo.ticketByCode(code);
-  if (t && note.length >= 2) await addNoteOp(t.id, note, labelOf(actor), actor.role, actor.id);
+  if (!t) redirect("/dashboard");
+  const isParty = actor.role === "admin" || t.created_by === actor.id || t.tester_id === actor.id || t.developer_id === actor.id;
+  if (!isParty) {
+    redirect(`/tickets/${code}?err=${enc("إضافة الملاحظات متاحة لمقدم الطلب والمسؤولين المسندين إليه فقط")}`);
+  }
+  if (note.length >= 2) await addNoteOp(t.id, note, labelOf(actor), actor.role, actor.id);
   revalidatePath(`/tickets/${code}`);
   redirect(`/tickets/${code}?ok=${enc("أُضيفت ملاحظتك وأُرسلت لكل أطراف الطلب ✓")}`);
 }
