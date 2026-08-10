@@ -106,6 +106,19 @@ export interface TicketAssignment {
   is_current: boolean;
 }
 
+export interface PrivateAccessLink {
+  id: string;
+  staff_id: string;
+  token_hash: string;
+  label: string | null;
+  active: boolean;
+  expires_at: string | null;
+  last_used_at: string | null;
+  created_by: string | null;
+  created_at: string;
+  revoked_at: string | null;
+}
+
 export interface AuditEntry {
   id: number;
   entity_type: string;

@@ -9,6 +9,7 @@ import { settingsSchema, staffSchema, templateSchema } from "@/lib/validators";
 import type { CustomFieldCfg, CustomFieldType, FormFieldCfg, Role, RolePermissions, TemplateBlocks, TrackPageCfg } from "@/lib/types";
 import { DEFAULT_TEMPLATE_BLOCKS } from "@/lib/types";
 import { isEmail } from "@/lib/util";
+import { generatePrivateToken, hashPrivateToken } from "@/lib/private-links";
 
 // ====== القوالب ======
 export async function upsertTemplateAction(input: { id?: string; name: string; subject: string; body_html: string; blocks?: TemplateBlocks | null }) {
@@ -122,6 +123,39 @@ export async function toggleStaffAction(id: string, active: number) {
   const repo = await getRepo();
   await repo.staffUpdate(id, { active });
   revalidatePath("/staff");
+}
+
+// ====== الروابط الخاصة الآمنة لمدخلي البيانات ======
+export async function generatePrivateAccessLinkAction(staffId: string) {
+  const actor = await requireStaff(["admin"]);
+  const repo = await getRepo();
+  const target = await repo.staffGet(staffId);
+  if (!target || target.role !== "support") return { ok: false, error: "اختر موظفاً بدور مدخل بيانات" };
+  const token = generatePrivateToken();
+  const link = await repo.privateLinkCreate({
+    staff_id: target.id, token_hash: hashPrivateToken(token),
+    label: `رابط ${target.name}`, created_by: actor.id,
+  });
+  const settings = await repo.settingsGet();
+  await repo.auditAdd({
+    entity_type: "private_access_link", entity_id: link.id, action: "private_link.created",
+    actor_staff_id: actor.id, actor_label: actor.name,
+    new_values: { staff_id: target.id, staff_name: target.name },
+  });
+  revalidatePath("/staff");
+  return { ok: true, url: `${settings.base_url}/request/${token}` };
+}
+
+export async function revokePrivateAccessLinkAction(id: string) {
+  const actor = await requireStaff(["admin"]);
+  const repo = await getRepo();
+  await repo.privateLinkRevoke(id);
+  await repo.auditAdd({
+    entity_type: "private_access_link", entity_id: id, action: "private_link.revoked",
+    actor_staff_id: actor.id, actor_label: actor.name,
+  });
+  revalidatePath("/staff");
+  return { ok: true };
 }
 
 // ====== الإعدادات ======

@@ -4,6 +4,7 @@ import { Card } from "@/components/ui";
 import { StaffManager } from "@/components/staff-manager";
 import { ClientsManager } from "@/components/clients-manager";
 import { ROLE_LABELS } from "@/lib/labels";
+import { PrivateLinksManager } from "@/components/private-links-manager";
 
 export const dynamic = "force-dynamic";
 
@@ -12,6 +13,7 @@ export default async function StaffPage() {
   const repo = await getRepo();
   const staff = await repo.staffList();
   const clients = await repo.clientsList();
+  const privateLinks = await repo.privateLinksList();
 
   return (
     <div className="space-y-5">
@@ -27,6 +29,16 @@ export default async function StaffPage() {
             id: s.id, name: s.name, email: s.email, role: s.role,
             role_label: ROLE_LABELS[s.role], manager_id: s.manager_id, active: !!s.active,
           }))}
+        />
+      </Card>
+      <div>
+        <h2 className="text-xl font-extrabold">🔐 الروابط الخاصة لمدخلي البيانات</h2>
+        <p className="text-sm text-slate-500">بديل آمن لقائمة الأسماء العامة؛ كل رابط يثبت هوية صاحبه ويمكن إلغاؤه فورًا.</p>
+      </div>
+      <Card>
+        <PrivateLinksManager
+          requesters={staff.filter((s) => s.role === "support" && s.active).map((s) => ({ id: s.id, name: s.name, email: s.email }))}
+          links={privateLinks.map((l) => ({ id: l.id, staff_id: l.staff_id, active: !!l.active, created_at: l.created_at, last_used_at: l.last_used_at }))}
         />
       </Card>
       <div>

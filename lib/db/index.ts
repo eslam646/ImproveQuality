@@ -1,7 +1,7 @@
 // طبقة الوصول للبيانات — واجهة موحدة مع تنفيذين: SQLite (محلي) + Supabase (إنتاج)
 import type {
   AutomationRule, Attachment, AuditEntry, Client, Condition, DevStatus, EmailLog, EmailTemplate,
-  Job, Notification, Settings, Staff, Ticket, TicketAssignment, TicketEvent, Action, TemplateBlocks,
+  Job, Notification, PrivateAccessLink, Settings, Staff, Ticket, TicketAssignment, TicketEvent, Action, TemplateBlocks,
   RequestType, TicketKind, TicketPriority,
 } from "../types";
 
@@ -26,6 +26,12 @@ export interface Repo {
   staffCreate(d: { name: string; email: string; role: Staff["role"]; manager_id: string | null }): Promise<Staff>;
   staffUpdate(id: string, patch: Partial<Staff>): Promise<void>;
   staffSetPin(id: string, pinHash: string): Promise<void>;
+
+  privateLinkCreate(input: { staff_id: string; token_hash: string; label?: string | null; created_by?: string | null }): Promise<PrivateAccessLink>;
+  privateLinkByHash(tokenHash: string): Promise<PrivateAccessLink | null>;
+  privateLinksList(staffId?: string): Promise<PrivateAccessLink[]>;
+  privateLinkTouch(id: string): Promise<void>;
+  privateLinkRevoke(id: string): Promise<void>;
 
   settingsGet(): Promise<Settings>;
   settingsSet(patch: Partial<Settings>): Promise<void>;

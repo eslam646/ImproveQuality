@@ -1,6 +1,6 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type { Repo, TicketFilter } from "./index";
-import type { AuditEntry, Client, CustomFieldCfg, EmailLog, FormFieldCfg, Job, PermKey, Role, RolePermissions, Settings, Staff, Ticket, TicketAssignment, TicketEvent, TrackPageCfg } from "../types";
+import type { AuditEntry, Client, CustomFieldCfg, EmailLog, FormFieldCfg, Job, PermKey, PrivateAccessLink, Role, RolePermissions, Settings, Staff, Ticket, TicketAssignment, TicketEvent, TrackPageCfg } from "../types";
 import { DEFAULT_FORM_FIELDS, DEFAULT_ROLE_PERMISSIONS, DEFAULT_TRACK_CFG } from "../types";
 import { SEED_RULES, SEED_STAFF, SEED_TEMPLATES, SEED_TICKETS } from "../seed";
 import { genId, genTicketCode, nowIso } from "../util";
@@ -113,6 +113,34 @@ export async function createSupabaseRepo(): Promise<Repo> {
     },
     async staffUpdate(id, patch) {
       must(await sb.from("staff").update(patch).eq("id", id));
+    },
+
+    async privateLinkCreate(input) {
+      const row = {
+        id: genId("plink"), staff_id: input.staff_id, token_hash: input.token_hash,
+        label: input.label ?? null, active: true, expires_at: null, last_used_at: null,
+        created_by: input.created_by ?? null, created_at: nowIso(), revoked_at: null,
+      };
+      const { data } = await sb.from("private_access_links").insert(row).select().single();
+      return data as PrivateAccessLink;
+    },
+    async privateLinkByHash(tokenHash) {
+      const { data } = await sb.from("private_access_links").select("*")
+        .eq("token_hash", tokenHash).eq("active", true).maybeSingle();
+      const link = (data as PrivateAccessLink) ?? null;
+      if (link?.expires_at && new Date(link.expires_at).getTime() <= Date.now()) return null;
+      return link;
+    },
+    async privateLinksList(staffId) {
+      let q = sb.from("private_access_links").select("*").order("created_at", { ascending: false });
+      if (staffId) q = q.eq("staff_id", staffId);
+      return (must(await q) as PrivateAccessLink[]) ?? [];
+    },
+    async privateLinkTouch(id) {
+      await sb.from("private_access_links").update({ last_used_at: nowIso() }).eq("id", id);
+    },
+    async privateLinkRevoke(id) {
+      await sb.from("private_access_links").update({ active: false, revoked_at: nowIso() }).eq("id", id);
     },
 
     settingsGet,

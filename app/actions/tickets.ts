@@ -10,6 +10,7 @@ import {
 import { getRepo } from "@/lib/db";
 import type { DevStatus, RequestType } from "@/lib/types";
 import { allowedTransitions, NOTE_REQUIRED_STATUSES, ROLE_LABELS } from "@/lib/labels";
+import { hashPrivateToken } from "@/lib/private-links";
 
 function enc(msg: string) { return encodeURIComponent(msg); }
 // التقاط الأخطاء غير المتوقعة وعرضها برسالة بدل خطأ 500 — وأيضاً تكشف سبب أي فشل فعلي
@@ -23,6 +24,46 @@ function estFromForm(formData: FormData) {
     days: Number.isFinite(d) && d >= 0 ? d : null,
     hours: Number.isFinite(h) && h >= 0 ? h : null,
   };
+}
+
+// ═══ إنشاء طلب من رابط خاص — هوية مدخل البيانات مثبتة بالـToken ═══
+export async function createPrivateRequestAction(formData: FormData) {
+  const token = String(formData.get("access_token") ?? "").trim();
+  const back = `/request/${encodeURIComponent(token)}`;
+  const fail = (msg: string): never => redirect(`${back}?err=${enc(msg)}`);
+  if (token.length < 32) fail("الرابط الخاص غير صالح");
+  const repo = await getRepo();
+  const link = await repo.privateLinkByHash(hashPrivateToken(token));
+  if (!link) fail("الرابط الخاص غير صالح أو تم إلغاؤه");
+  const requester = await repo.staffGet(link!.staff_id);
+  if (!requester || !requester.active || requester.role !== "support") fail("حساب مدخل البيانات غير متاح");
+
+  const clientId = String(formData.get("client_id") ?? "").trim();
+  const client = (await repo.clientsList(true)).find((c) => c.id === clientId);
+  const requestType = String(formData.get("request_type") ?? "issue") as RequestType;
+  const title = String(formData.get("title") ?? "").trim();
+  const details = String(formData.get("details") ?? "").trim();
+  const testerId = String(formData.get("tester_id") ?? "").trim();
+  const linkedCode = String(formData.get("linked_ticket_code") ?? "").trim();
+  if (!client) fail("اختيار العميل إجباري");
+  if (!["new_development", "change_request", "issue"].includes(requestType)) fail("نوع الطلب غير صحيح");
+  if (title.length < 3) fail("عنوان الطلب إجباري");
+  if (details.length < 10) fail("اكتب التفاصيل والخطوات بوضوح");
+  if (!testerId) fail("اختيار مسؤول الاختبار إجباري");
+  const tester = await repo.staffGet(testerId);
+  if (!tester || tester.role !== "tester" || !tester.active) fail("مسؤول الاختبار غير صحيح");
+  const linked = linkedCode ? await repo.ticketByCode(linkedCode) : null;
+  if (requestType === "change_request" && !linked) fail("كود الطلب السابق غير موجود");
+
+  const ticket = await createTicketOp({
+    client_id: client!.id, client_name: client!.name, client_contact: requester!.email,
+    title, details, request_type: requestType, ticket_kind: "standard", priority: "normal",
+    linked_ticket_id: linked?.id ?? null, tester_id: tester!.id,
+    creator_id: requester!.id, actor: { staff_id: requester!.id, label: requester!.name }, source: "web_guest",
+  });
+  await repo.privateLinkTouch(link!.id);
+  revalidatePath("/dashboard");
+  redirect(`${back}?created=${enc(ticket.code)}`);
 }
 
 // ═══ إنشاء طلب (داخلي) ═══

@@ -4,7 +4,7 @@ import path from "path";
 import type { Repo, TicketFilter } from "./index";
 import type {
   AuditEntry, AutomationRule, Attachment, Client, CustomFieldCfg, EmailLog, EmailTemplate, FormFieldCfg, Job, Notification,
-  PermKey, Role, RolePermissions, Settings, Staff, Ticket, TicketAssignment, TicketEvent, TrackPageCfg,
+  PermKey, PrivateAccessLink, Role, RolePermissions, Settings, Staff, Ticket, TicketAssignment, TicketEvent, TrackPageCfg,
 } from "../types";
 import { DEFAULT_FORM_FIELDS, DEFAULT_ROLE_PERMISSIONS, DEFAULT_TRACK_CFG } from "../types";
 import { SEED_RULES, SEED_STAFF, SEED_TEMPLATES, SEED_TICKETS } from "../seed";
@@ -79,6 +79,12 @@ export function createSqliteRepo(): Repo {
     uploaded_by TEXT NOT NULL, created_at TEXT NOT NULL
   );
   CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+  CREATE TABLE IF NOT EXISTS private_access_links (
+    id TEXT PRIMARY KEY, staff_id TEXT NOT NULL, token_hash TEXT NOT NULL UNIQUE, label TEXT,
+    active INTEGER NOT NULL DEFAULT 1, expires_at TEXT, last_used_at TEXT, created_by TEXT,
+    created_at TEXT NOT NULL, revoked_at TEXT
+  );
+  CREATE INDEX IF NOT EXISTS idx_private_links_staff ON private_access_links(staff_id, active);
   CREATE TABLE IF NOT EXISTS ticket_assignments (
     id TEXT PRIMARY KEY, ticket_id TEXT NOT NULL, assignment_role TEXT NOT NULL, staff_id TEXT NOT NULL,
     status TEXT NOT NULL DEFAULT 'pending', decline_reason TEXT, assigned_by TEXT, assigned_at TEXT NOT NULL,
@@ -255,6 +261,36 @@ export function createSqliteRepo(): Repo {
       const m = { ...cur, ...patch };
       db.prepare("UPDATE staff SET name=?,email=?,role=?,manager_id=?,active=?,created_at=? WHERE id=?")
         .run(m.name, m.email, m.role, m.manager_id, m.active, m.created_at, m.id);
+    },
+
+    async privateLinkCreate(input) {
+      const row: PrivateAccessLink = {
+        id: genId("plink"), staff_id: input.staff_id, token_hash: input.token_hash,
+        label: input.label ?? null, active: true, expires_at: null, last_used_at: null,
+        created_by: input.created_by ?? null, created_at: nowIso(), revoked_at: null,
+      };
+      db.prepare(`INSERT INTO private_access_links
+        (id,staff_id,token_hash,label,active,expires_at,last_used_at,created_by,created_at,revoked_at)
+        VALUES (?,?,?,?,1,?,?,?,?,?)`)
+        .run(row.id, row.staff_id, row.token_hash, row.label, row.expires_at, row.last_used_at, row.created_by, row.created_at, row.revoked_at);
+      return row;
+    },
+    async privateLinkByHash(tokenHash) {
+      const r = db.prepare("SELECT * FROM private_access_links WHERE token_hash=? AND active=1").get(tokenHash) as (Omit<PrivateAccessLink, "active"> & { active: number }) | undefined;
+      if (!r || (r.expires_at && new Date(r.expires_at).getTime() <= Date.now())) return null;
+      return { ...r, active: !!r.active };
+    },
+    async privateLinksList(staffId) {
+      const rows = (staffId
+        ? db.prepare("SELECT * FROM private_access_links WHERE staff_id=? ORDER BY created_at DESC").all(staffId)
+        : db.prepare("SELECT * FROM private_access_links ORDER BY created_at DESC").all()) as (Omit<PrivateAccessLink, "active"> & { active: number })[];
+      return rows.map((r) => ({ ...r, active: !!r.active }));
+    },
+    async privateLinkTouch(id) {
+      db.prepare("UPDATE private_access_links SET last_used_at=? WHERE id=?").run(nowIso(), id);
+    },
+    async privateLinkRevoke(id) {
+      db.prepare("UPDATE private_access_links SET active=0,revoked_at=? WHERE id=?").run(nowIso(), id);
     },
 
     settingsGet,
