@@ -3,8 +3,8 @@ import fs from "fs";
 import path from "path";
 import type { Repo, TicketFilter } from "./index";
 import type {
-  AutomationRule, Attachment, Client, CustomFieldCfg, EmailLog, EmailTemplate, FormFieldCfg, Job, Notification,
-  PermKey, Role, RolePermissions, Settings, Staff, Ticket, TicketEvent, TrackPageCfg,
+  AuditEntry, AutomationRule, Attachment, Client, CustomFieldCfg, EmailLog, EmailTemplate, FormFieldCfg, Job, Notification,
+  PermKey, Role, RolePermissions, Settings, Staff, Ticket, TicketAssignment, TicketEvent, TrackPageCfg,
 } from "../types";
 import { DEFAULT_FORM_FIELDS, DEFAULT_ROLE_PERMISSIONS, DEFAULT_TRACK_CFG } from "../types";
 import { SEED_RULES, SEED_STAFF, SEED_TEMPLATES, SEED_TICKETS } from "../seed";
@@ -79,6 +79,18 @@ export function createSqliteRepo(): Repo {
     uploaded_by TEXT NOT NULL, created_at TEXT NOT NULL
   );
   CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+  CREATE TABLE IF NOT EXISTS ticket_assignments (
+    id TEXT PRIMARY KEY, ticket_id TEXT NOT NULL, assignment_role TEXT NOT NULL, staff_id TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending', decline_reason TEXT, assigned_by TEXT, assigned_at TEXT NOT NULL,
+    responded_at TEXT, completed_at TEXT, is_current INTEGER NOT NULL DEFAULT 1
+  );
+  CREATE INDEX IF NOT EXISTS idx_assignments_ticket ON ticket_assignments(ticket_id, assignment_role, is_current);
+  CREATE TABLE IF NOT EXISTS audit_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, entity_type TEXT NOT NULL, entity_id TEXT NOT NULL, action TEXT NOT NULL,
+    actor_staff_id TEXT, actor_label TEXT, old_values TEXT, new_values TEXT, request_ip TEXT, user_agent TEXT,
+    created_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_audit_entity ON audit_log(entity_type, entity_id, created_at);
   `);
 
   // ترحيلات لطيفة لقواعد موجودة مسبقاً
@@ -396,6 +408,56 @@ export function createSqliteRepo(): Repo {
       let total = 0;
       rows.forEach((r) => { byStatus[r.dev_status] = r.c; total += r.c; });
       return { total, byStatus };
+    },
+
+    async assignmentCreate(a) {
+      db.prepare("UPDATE ticket_assignments SET is_current=0,status='reassigned' WHERE ticket_id=? AND assignment_role=? AND is_current=1")
+        .run(a.ticket_id, a.assignment_role);
+      const row: TicketAssignment = {
+        id: genId("asg"), ...a, status: "pending", decline_reason: null,
+        assigned_at: nowIso(), responded_at: null, completed_at: null, is_current: true,
+      };
+      db.prepare(`INSERT INTO ticket_assignments
+        (id,ticket_id,assignment_role,staff_id,status,decline_reason,assigned_by,assigned_at,responded_at,completed_at,is_current)
+        VALUES (?,?,?,?,?,?,?,?,?,?,1)`)
+        .run(row.id, row.ticket_id, row.assignment_role, row.staff_id, row.status, row.decline_reason, row.assigned_by, row.assigned_at, row.responded_at, row.completed_at);
+      return row;
+    },
+    async assignmentCurrent(ticketId, role) {
+      const r = db.prepare("SELECT * FROM ticket_assignments WHERE ticket_id=? AND assignment_role=? AND is_current=1 ORDER BY assigned_at DESC LIMIT 1")
+        .get(ticketId, role) as (Omit<TicketAssignment, "is_current"> & { is_current: number }) | undefined;
+      return r ? { ...r, is_current: !!r.is_current } : null;
+    },
+    async assignmentRespond(id, status, reason = null) {
+      db.prepare("UPDATE ticket_assignments SET status=?,decline_reason=?,responded_at=?,is_current=? WHERE id=?")
+        .run(status, status === "declined" ? reason : null, nowIso(), status === "declined" ? 0 : 1, id);
+      const r = db.prepare("SELECT * FROM ticket_assignments WHERE id=?").get(id) as (Omit<TicketAssignment, "is_current"> & { is_current: number }) | undefined;
+      return r ? { ...r, is_current: !!r.is_current } : null;
+    },
+    async assignmentList(ticketId) {
+      const rows = db.prepare("SELECT * FROM ticket_assignments WHERE ticket_id=? ORDER BY assigned_at DESC").all(ticketId) as (Omit<TicketAssignment, "is_current"> & { is_current: number })[];
+      return rows.map((r) => ({ ...r, is_current: !!r.is_current }));
+    },
+
+    async auditAdd(e) {
+      const created_at = nowIso();
+      const r = db.prepare(`INSERT INTO audit_log
+        (entity_type,entity_id,action,actor_staff_id,actor_label,old_values,new_values,request_ip,user_agent,created_at)
+        VALUES (?,?,?,?,?,?,?,?,?,?)`)
+        .run(e.entity_type, e.entity_id, e.action, e.actor_staff_id ?? null, e.actor_label ?? null,
+          e.old_values ? JSON.stringify(e.old_values) : null, e.new_values ? JSON.stringify(e.new_values) : null,
+          e.request_ip ?? null, e.user_agent ?? null, created_at);
+      return {
+        id: Number(r.lastInsertRowid), entity_type: e.entity_type, entity_id: e.entity_id, action: e.action,
+        actor_staff_id: e.actor_staff_id ?? null, actor_label: e.actor_label ?? null,
+        old_values: e.old_values ?? null, new_values: e.new_values ?? null,
+        request_ip: e.request_ip ?? null, user_agent: e.user_agent ?? null, created_at,
+      } as AuditEntry;
+    },
+    async auditList(entityType, entityId) {
+      const rows = db.prepare("SELECT * FROM audit_log WHERE entity_type=? AND entity_id=? ORDER BY created_at DESC")
+        .all(entityType, entityId) as (Omit<AuditEntry, "old_values" | "new_values"> & { old_values: string | null; new_values: string | null })[];
+      return rows.map((r) => ({ ...r, old_values: r.old_values ? JSON.parse(r.old_values) : null, new_values: r.new_values ? JSON.parse(r.new_values) : null }));
     },
 
     async eventAdd(e) {

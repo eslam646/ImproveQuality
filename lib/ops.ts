@@ -13,7 +13,11 @@ type PartyRef = "creator" | "tester" | "developer" | "client";
 
 async function resolveParty(repo: Repo, ticket: Ticket, ref: PartyRef): Promise<{ staff: Staff | null; email: string | null }> {
   const pick = async (id: string | null | undefined) => (id ? repo.staffGet(id) : null);
-  if (ref === "creator") { const s = await pick(ticket.created_by); return { staff: s ?? null, email: s?.email ?? null }; }
+  if (ref === "creator") {
+    const s = await pick(ticket.created_by);
+    const fallback = !s && ticket.client_contact && isEmail(ticket.client_contact) ? ticket.client_contact : null;
+    return { staff: s ?? null, email: s?.email ?? fallback };
+  }
   if (ref === "tester") { const s = await pick(ticket.tester_id); return { staff: s ?? null, email: s?.email ?? null }; }
   if (ref === "developer") { const s = await pick(ticket.developer_id); return { staff: s ?? null, email: s?.email ?? null }; }
   // client: وسيلة التواصل قد تكون هاتفاً — لا نرسل إلا للبريد الصحيح
@@ -148,6 +152,15 @@ export async function createTicketOp(input: {
     is_urgent: urgent,
   });
 
+  await repo.auditAdd({
+    entity_type: "ticket", entity_id: ticket.id, action: "ticket.created",
+    actor_staff_id: input.actor.staff_id, actor_label: input.actor.label,
+    old_values: null, new_values: { code: ticket.code, title: ticket.title, request_type: ticket.request_type, ticket_kind: ticket.ticket_kind },
+  });
+  if (input.tester_id) {
+    await repo.assignmentCreate({ ticket_id: ticket.id, assignment_role: "tester", staff_id: input.tester_id, assigned_by: input.actor.staff_id });
+  }
+
   const evt = await repo.eventAdd({
     ticket_id: ticket.id, type: "ticket.created", actor_label: input.actor.label,
     old_values: null, new_values: { client_name: ticket.client_name, source: ticket.source, urgent: urgent },
@@ -171,7 +184,7 @@ export async function createTicketOp(input: {
     });
   }
   if (input.developer_id) {
-    await assignDeveloperOp(ticket.id, input.developer_id, input.actor.label);
+    await assignDeveloperOp(ticket.id, input.developer_id, input.actor.label, undefined, input.actor.staff_id);
   }
   return (await repo.ticketById(ticket.id)) ?? ticket;
 }
@@ -179,7 +192,7 @@ export async function createTicketOp(input: {
 // ═══ إسناد الاختبار (التيست أولاً — قبل المطور دائماً) ═══
 export async function assignTesterOp(
   ticketId: string, testerId: string, actorLabel: string,
-  est?: { days?: number | null; hours?: number | null },
+  est?: { days?: number | null; hours?: number | null }, assignedBy: string | null = null,
 ): Promise<Ticket | null> {
   const repo = await getRepo();
   const old = await repo.ticketById(ticketId);
@@ -197,6 +210,13 @@ export async function assignTesterOp(
   if (est?.hours != null) patch.est_hours = est.hours;
   const ticket = await repo.ticketUpdate(ticketId, patch);
   if (!ticket) return null;
+  await repo.assignmentCreate({ ticket_id: ticket.id, assignment_role: "tester", staff_id: testerId, assigned_by: assignedBy });
+  await repo.auditAdd({
+    entity_type: "ticket", entity_id: ticket.id, action: "tester.assigned",
+    actor_staff_id: assignedBy, actor_label: actorLabel,
+    old_values: { tester_id: old.tester_id, tester_name: old.tester_name },
+    new_values: { tester_id: testerId, tester_name: ts.name, status: "pending" },
+  });
   await repo.eventAdd({
     ticket_id: ticket.id, type: "ticket.assigned", actor_label: actorLabel,
     old_values: { tester: old.tester_name }, new_values: { tester: ts.name },
@@ -231,7 +251,7 @@ export async function setEstimationOp(ticketId: string, est: { days?: number | n
 // ═══ إسناد المطور (لا يتم إلا بعد التيست — القيد مفروض في الأكشن) ═══
 export async function assignDeveloperOp(
   ticketId: string, developerId: string, actorLabel: string,
-  est?: { days?: number | null; hours?: number | null },
+  est?: { days?: number | null; hours?: number | null }, assignedBy: string | null = null,
 ): Promise<Ticket | null> {
   const repo = await getRepo();
   const old = await repo.ticketById(ticketId);
@@ -248,6 +268,13 @@ export async function assignDeveloperOp(
   if (est?.hours != null) patch.est_hours = est.hours;
   const ticket = await repo.ticketUpdate(ticketId, patch);
   if (!ticket) return null;
+  await repo.assignmentCreate({ ticket_id: ticket.id, assignment_role: "developer", staff_id: developerId, assigned_by: assignedBy });
+  await repo.auditAdd({
+    entity_type: "ticket", entity_id: ticket.id, action: "developer.assigned",
+    actor_staff_id: assignedBy, actor_label: actorLabel,
+    old_values: { developer_id: old.developer_id, developer_name: old.developer_name },
+    new_values: { developer_id: developerId, developer_name: dev?.name ?? null, status: "pending" },
+  });
   const evt = await repo.eventAdd({
     ticket_id: ticket.id, type: "ticket.assigned", actor_label: actorLabel,
     old_values: { developer: old.developer_name }, new_values: { developer: dev?.name },
@@ -256,7 +283,82 @@ export async function assignDeveloperOp(
   return ticket;
 }
 
-// ═══ الاعتذار عن المهمة (التيست أو الديف) بسبب إجباري ═══
+// ═══ قبول/رفض التكليف — قرار مستقل للتيستر والمطور ═══
+export async function respondToAssignmentOp(
+  ticketId: string,
+  actor: { staff_id: string; name: string; role: Role },
+  decision: "accepted" | "declined",
+  reason?: string,
+): Promise<{ ok: boolean; error?: string }> {
+  const repo = await getRepo();
+  const ticket = await repo.ticketById(ticketId);
+  if (!ticket) return { ok: false, error: "الطلب غير موجود" };
+  const assignmentRole = actor.role === "tester" ? "tester" : actor.role === "developer" ? "developer" : null;
+  if (!assignmentRole) return { ok: false, error: "هذا الإجراء متاح للتيستر والمطور فقط" };
+  const assignedId = assignmentRole === "tester" ? ticket.tester_id : ticket.developer_id;
+  if (assignedId !== actor.staff_id) return { ok: false, error: "هذا التكليف غير مسند إليك" };
+  if (decision === "declined" && (!reason || reason.trim().length < 3)) {
+    return { ok: false, error: "سبب رفض التكليف إجباري" };
+  }
+
+  let assignment = await repo.assignmentCurrent(ticket.id, assignmentRole);
+  if (!assignment) {
+    assignment = await repo.assignmentCreate({
+      ticket_id: ticket.id, assignment_role: assignmentRole, staff_id: actor.staff_id, assigned_by: null,
+    });
+  }
+  await repo.assignmentRespond(assignment.id, decision, reason?.trim() || null);
+
+  const actorLabel = `${actor.name} (${ROLE_LABELS[actor.role]})`;
+  const accepted = decision === "accepted";
+  const patch: Partial<Ticket> = assignmentRole === "tester"
+    ? {
+        tester_assignment_status: decision,
+        ...(accepted ? { overall_status: "awaiting_developer" as const } : { tester_id: null, tester_name: null, overall_status: "awaiting_tester" as const }),
+        updated_at: nowIso(),
+      }
+    : {
+        developer_assignment_status: decision,
+        ...(accepted
+          ? { overall_status: "in_development" as const, dev_status: "in_progress" as const, last_status_change: nowIso() }
+          : { developer_id: null, developer_name: null, overall_status: "awaiting_developer" as const }),
+        updated_at: nowIso(),
+      };
+  const updated = await repo.ticketUpdate(ticket.id, patch);
+  if (!updated) return { ok: false, error: "تعذر تحديث الطلب" };
+
+  const action = `${assignmentRole}.${decision}`;
+  await repo.auditAdd({
+    entity_type: "ticket", entity_id: ticket.id, action,
+    actor_staff_id: actor.staff_id, actor_label: actorLabel,
+    old_values: { assignment_status: assignment.status, assignee: actor.staff_id },
+    new_values: { assignment_status: decision, reason: reason?.trim() || null },
+  });
+  await repo.eventAdd({
+    ticket_id: ticket.id, type: "note.added", actor_label: actorLabel, old_values: null,
+    new_values: { note: `${accepted ? "✅ وافق على" : "❌ رفض"} تكليف ${assignmentRole === "tester" ? "الاختبار" : "التطوير"}${reason ? ` — السبب: ${reason.trim()}` : ""}` },
+  });
+
+  const admins = (await repo.staffList(true)).filter((s) => s.role === "admin").map((s) => s.email);
+  await mailParties({
+    ticket: updated,
+    to: ["creator"],
+    cc: assignmentRole === "tester" ? ["developer"] : ["tester"],
+    extraTo: admins,
+    excludeStaffId: actor.staff_id,
+    subject: `${accepted ? "✅ قبول" : "❌ رفض"} ${assignmentRole === "tester" ? "التيستر" : "المطور"} للتكليف ${ticket.code} — ${actor.name}`,
+    bodyHtml: `<p><b>${esc(actorLabel)}</b> ${accepted ? "وافق على" : "رفض"} التكليف بالطلب <b dir="ltr">${esc(ticket.code)}</b>.</p>
+      <p><b>العميل:</b> ${esc(ticket.client_name)}</p>
+      <p><b>العنوان:</b> ${esc(ticket.title || ticket.details.slice(0, 120))}</p>
+      ${reason ? `<p style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:12px"><b>السبب:</b><br>${esc(reason.trim())}</p>` : ""}
+      ${TRACK_ROW(updated, await repo.settingsGet())}`,
+    notifyTo: ["creator", ...(assignmentRole === "tester" ? (["developer"] as PartyRef[]) : (["tester"] as PartyRef[]))],
+    notifyMessage: `${accepted ? "✅" : "❌"} ${actor.name} ${accepted ? "وافق على" : "رفض"} ${ticket.code}`,
+  });
+  return { ok: true };
+}
+
+// ═══ الاعتذار عن الدعم الفوري بعد القبول — بسبب إجباري ═══
 export async function declineAssignmentOp(
   ticketId: string,
   actor: { staff_id: string; name: string; role: Role },
@@ -271,6 +373,8 @@ export async function declineAssignmentOp(
   const isTester = actor.role === "tester" && t.tester_id === actor.staff_id;
   const isDev = actor.role === "developer" && t.developer_id === actor.staff_id;
   if (!isTester && !isDev) return { ok: false, error: "المهمة غير مسندة إليك حالياً" };
+  const currentAssignment = await repo.assignmentCurrent(ticketId, isTester ? "tester" : "developer");
+  if (currentAssignment) await repo.assignmentRespond(currentAssignment.id, "declined", reason);
 
   const patch: Partial<Ticket> = isTester
     ? { tester_id: null, tester_name: null, tester_assignment_status: "declined", overall_status: "awaiting_tester", updated_at: nowIso() }
@@ -280,7 +384,13 @@ export async function declineAssignmentOp(
 
   await repo.eventAdd({
     ticket_id: ticketId, type: "note.added", actor_label: actorLabel,
-    old_values: null, new_values: { note: `🙅 اعتذر عن المهمة — السبب: ${reason}` },
+    old_values: null, new_values: { note: `🙅 اعتذر عن الدعم الفوري — السبب: ${reason}` },
+  });
+  await repo.auditAdd({
+    entity_type: "ticket", entity_id: ticketId, action: `${isTester ? "tester" : "developer"}.urgent_withdrawal`,
+    actor_staff_id: actor.staff_id, actor_label: actorLabel,
+    old_values: { tester_id: t.tester_id, developer_id: t.developer_id },
+    new_values: { reason, tester_id: updated.tester_id, developer_id: updated.developer_id },
   });
 
   const admins = (await repo.staffList(true)).filter((s) => s.role === "admin");
@@ -320,6 +430,11 @@ export async function changeStatusOp(
     dev_status: newStatus, last_status_change: nowIso(), updated_at: nowIso(),
   });
   if (!ticket) return null;
+  await repo.auditAdd({
+    entity_type: "ticket", entity_id: ticket.id, action: "status.changed", actor_label: actorLabel,
+    old_values: { dev_status: old.dev_status, overall_status: old.overall_status },
+    new_values: { dev_status: newStatus, note: note?.trim() || null },
+  });
   const evt = await repo.eventAdd({
     ticket_id: ticket.id, type: "field.changed", actor_label: actorLabel,
     old_values: { dev_status: old.dev_status }, new_values: { dev_status: newStatus },
@@ -386,6 +501,11 @@ export async function addNoteOp(
   const repo = await getRepo();
   await repo.eventAdd({
     ticket_id: ticketId, type: "note.added", actor_label: actorLabel,
+    old_values: null, new_values: { note },
+  });
+  await repo.auditAdd({
+    entity_type: "ticket", entity_id: ticketId, action: "note.added",
+    actor_staff_id: actorStaffId ?? null, actor_label: actorLabel,
     old_values: null, new_values: { note },
   });
   const t = await repo.ticketById(ticketId);

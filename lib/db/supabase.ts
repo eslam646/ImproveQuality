@@ -1,6 +1,6 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type { Repo, TicketFilter } from "./index";
-import type { Client, CustomFieldCfg, EmailLog, FormFieldCfg, Job, PermKey, Role, RolePermissions, Settings, Staff, Ticket, TicketEvent, TrackPageCfg } from "../types";
+import type { AuditEntry, Client, CustomFieldCfg, EmailLog, FormFieldCfg, Job, PermKey, Role, RolePermissions, Settings, Staff, Ticket, TicketAssignment, TicketEvent, TrackPageCfg } from "../types";
 import { DEFAULT_FORM_FIELDS, DEFAULT_ROLE_PERMISSIONS, DEFAULT_TRACK_CFG } from "../types";
 import { SEED_RULES, SEED_STAFF, SEED_TEMPLATES, SEED_TICKETS } from "../seed";
 import { genId, genTicketCode, nowIso } from "../util";
@@ -231,6 +231,48 @@ export async function createSupabaseRepo(): Promise<Repo> {
       const byStatus: Record<string, number> = {};
       rows.forEach((r) => { byStatus[r.dev_status] = (byStatus[r.dev_status] ?? 0) + 1; });
       return { total: rows.length, byStatus };
+    },
+
+    async assignmentCreate(a) {
+      // الإسناد الجديد يجعل أي إسناد حالي سابق لنفس الدور غير حالي
+      await sb.from("ticket_assignments").update({ is_current: false, status: "reassigned" })
+        .eq("ticket_id", a.ticket_id).eq("assignment_role", a.assignment_role).eq("is_current", true);
+      const row = {
+        id: genId("asg"), ...a, status: "pending", decline_reason: null,
+        assigned_at: nowIso(), responded_at: null, completed_at: null, is_current: true,
+      };
+      const { data } = await sb.from("ticket_assignments").insert(row).select().single();
+      return data as TicketAssignment;
+    },
+    async assignmentCurrent(ticketId, role) {
+      const { data } = await sb.from("ticket_assignments").select("*")
+        .eq("ticket_id", ticketId).eq("assignment_role", role).eq("is_current", true)
+        .order("assigned_at", { ascending: false }).limit(1).maybeSingle();
+      return (data as TicketAssignment) ?? null;
+    },
+    async assignmentRespond(id, status, reason = null) {
+      const { data } = await sb.from("ticket_assignments").update({
+        status, decline_reason: status === "declined" ? reason : null,
+        responded_at: nowIso(), is_current: status !== "declined",
+      }).eq("id", id).select().maybeSingle();
+      return (data as TicketAssignment) ?? null;
+    },
+    async assignmentList(ticketId) {
+      return (must(await sb.from("ticket_assignments").select("*").eq("ticket_id", ticketId).order("assigned_at", { ascending: false })) as TicketAssignment[]) ?? [];
+    },
+
+    async auditAdd(e) {
+      const row = {
+        entity_type: e.entity_type, entity_id: e.entity_id, action: e.action,
+        actor_staff_id: e.actor_staff_id ?? null, actor_label: e.actor_label ?? null,
+        old_values: e.old_values ?? null, new_values: e.new_values ?? null,
+        request_ip: e.request_ip ?? null, user_agent: e.user_agent ?? null, created_at: nowIso(),
+      };
+      const { data } = await sb.from("audit_log").insert(row).select().single();
+      return data as AuditEntry;
+    },
+    async auditList(entityType, entityId) {
+      return (must(await sb.from("audit_log").select("*").eq("entity_type", entityType).eq("entity_id", entityId).order("created_at", { ascending: false })) as AuditEntry[]) ?? [];
     },
 
     async eventAdd(e) {

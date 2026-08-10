@@ -4,7 +4,7 @@ import { getRepo } from "@/lib/db";
 import { requireStaff, canManage, isAdmin } from "@/lib/auth";
 import {
   addNoteAction, assignDeveloperAction, assignTesterAction,
-  declineAssignmentAction, setEstimationAction,
+  declineAssignmentAction, respondToAssignmentAction, setEstimationAction,
 } from "@/app/actions/tickets";
 import { Badge, Button, Card, Field, Msg, selectCls, inputCls } from "@/components/ui";
 import { allowedTransitions, ASSIGNMENT_STATUS_LABELS, REQUEST_TYPE_LABELS, ROLE_LABELS, STATUS_COLORS, STATUS_LABELS } from "@/lib/labels";
@@ -71,19 +71,26 @@ export default async function TicketDetailsPage({
   const testers = staffAll.filter((s) => s.role === "tester");
   const devs = staffAll.filter((s) => s.role === "developer");
 
-  const [events, attachments, emailLog] = await Promise.all([
+  const [events, attachments, emailLog, auditEntries] = await Promise.all([
     repo.eventList(ticket.id),
     repo.attachmentList(ticket.id),
     isAdmin(actor) ? repo.emailLogList(1, 10, ticket.id) : Promise.resolve({ rows: [], total: 0 }),
+    isAdmin(actor) ? repo.auditList("ticket", ticket.id) : Promise.resolve([]),
   ]);
 
   const manage = canManage(actor);
   const isAssignedTester = ticket.tester_id === actor.id;
   const isAssignedDev = ticket.developer_id === actor.id;
+  const myAssignmentStatus = isAssignedTester
+    ? (ticket.tester_assignment_status ?? "unassigned")
+    : isAssignedDev ? (ticket.developer_assignment_status ?? "unassigned") : null;
+  const needsAssignmentResponse = (isAssignedTester || isAssignedDev) && ["pending", "unassigned", "reassigned"].includes(myAssignmentStatus ?? "");
   // مدخل البيانات View-only بعد الإنشاء؛ الرفع للأدمن أو المسؤول المسند فقط
   const canUpload = actor.role === "admin" || isAssignedTester || isAssignedDev;
   const canAssignDev = manage || (actor.role === "tester" && isAssignedTester);
-  const transitions = allowedTransitions(actor.role, ticket.dev_status);
+  const transitions = (actor.role === "tester" || actor.role === "developer") && myAssignmentStatus !== "accepted"
+    ? []
+    : allowedTransitions(actor.role, ticket.dev_status);
   const noteLabel = actor.role === "developer" ? "ملاحظات الديف" : actor.role === "tester" ? "ملاحظات التيست" : "ملاحظة";
   const hasActions = manage || isAssignedTester || isAssignedDev || transitions.length > 0;
 
@@ -181,6 +188,26 @@ export default async function TicketDetailsPage({
           {hasActions && (
             <Card title="سير العمل والإجراءات">
               <div className="space-y-6">
+                {needsAssignmentResponse && (
+                  <div className="rounded-xl border-2 border-amber-300 bg-amber-50 p-4">
+                    <h3 className="font-extrabold text-amber-900">قرار التكليف مطلوب — {isAssignedTester ? "مسؤول الاختبار" : "المطور"}</h3>
+                    <p className="mt-1 text-sm text-amber-800">وافق لبدء العمل، أو ارفض مع كتابة سبب واضح. القرار والسبب يُرسلان لمقدم الطلب والإدارة ويُسجلان بالكامل.</p>
+                    <div className="mt-4 grid gap-3 md:grid-cols-2">
+                      <form action={respondToAssignmentAction}>
+                        <input type="hidden" name="code" value={ticket.code} />
+                        <input type="hidden" name="decision" value="accepted" />
+                        <Button type="submit">✅ أوافق على التكليف</Button>
+                      </form>
+                      <form action={respondToAssignmentAction} className="space-y-2">
+                        <input type="hidden" name="code" value={ticket.code} />
+                        <input type="hidden" name="decision" value="declined" />
+                        <input name="reason" required minLength={3} className={inputCls} placeholder="سبب رفض التكليف (إجباري)…" />
+                        <Button type="submit" variant="secondary">❌ رفض التكليف وإرسال السبب</Button>
+                      </form>
+                    </div>
+                  </div>
+                )}
+
                 {manage && (
                   <form action={assignTesterAction} className="space-y-2 rounded-xl border border-purple-100 bg-purple-50/40 p-3">
                     <input type="hidden" name="code" value={ticket.code} />
@@ -231,7 +258,7 @@ export default async function TicketDetailsPage({
                   </form>
                 )}
 
-                {!!ticket.is_urgent && (isAssignedTester || isAssignedDev) && (
+                {!!ticket.is_urgent && (isAssignedTester || isAssignedDev) && myAssignmentStatus === "accepted" && (
                   <form action={declineAssignmentAction} className="space-y-2 rounded-xl border border-rose-200 bg-rose-50 p-3">
                     <input type="hidden" name="code" value={ticket.code} />
                     <Field label={`الاعتذار عن الدعم الفوري (أنت ${isAssignedTester ? "التيست" : "المطوّر"} المسند)`} hint="خاص بالدعم الفوري فقط — السبب إجباري، ويصل إيميل لمقدم الطلب والإدارة ثم تعود المهمة لإعادة الإسناد">
@@ -274,6 +301,20 @@ export default async function TicketDetailsPage({
           <Card title={`سجل الأحداث (${events.length})`}>
             <ul className="space-y-4">{events.map((e) => <EventLine key={e.id} e={e} />)}</ul>
           </Card>
+
+          {isAdmin(actor) && auditEntries.length > 0 && (
+            <Card title={`🔐 سجل التدقيق (${auditEntries.length})`}>
+              <ul className="space-y-2 text-xs">
+                {auditEntries.slice(0, 30).map((a) => (
+                  <li key={a.id} className="rounded-lg border border-slate-100 bg-slate-50 p-2">
+                    <div className="font-bold text-slate-700">{a.action}</div>
+                    <div className="text-slate-500">{a.actor_label || "النظام"}</div>
+                    <div className="text-slate-400">{fmtDate(a.created_at)}</div>
+                  </li>
+                ))}
+              </ul>
+            </Card>
+          )}
 
           {isAdmin(actor) && emailLog.rows.length > 0 && (
             <Card title="آخر البريد المرسل لهذه التذكرة">

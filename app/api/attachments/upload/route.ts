@@ -73,5 +73,11 @@ export async function POST(req: Request) {
     ticket_id: ticket.id, type: "attachment.added", actor_label: uploader,
     old_values: null, new_values: { file: file.name },
   });
+  await repo.auditAdd({
+    entity_type: "ticket", entity_id: ticket.id, action: "attachment.uploaded",
+    actor_staff_id: actor?.id ?? null, actor_label: uploader,
+    old_values: null, new_values: { attachment_id: att.id, file_name: file.name, size_bytes: file.size, mime_type: file.type },
+    user_agent: req.headers.get("user-agent"),
+  });
   return NextResponse.json({ ok: true, id: att.id });
 }

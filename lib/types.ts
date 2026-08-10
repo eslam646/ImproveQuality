@@ -92,6 +92,34 @@ export interface TicketEvent {
   created_at: string;
 }
 
+export interface TicketAssignment {
+  id: string;
+  ticket_id: string;
+  assignment_role: "tester" | "developer";
+  staff_id: string;
+  status: "pending" | "accepted" | "declined" | "reassigned" | "completed" | "cancelled";
+  decline_reason: string | null;
+  assigned_by: string | null;
+  assigned_at: string;
+  responded_at: string | null;
+  completed_at: string | null;
+  is_current: boolean;
+}
+
+export interface AuditEntry {
+  id: number;
+  entity_type: string;
+  entity_id: string;
+  action: string;
+  actor_staff_id: string | null;
+  actor_label: string | null;
+  old_values: Record<string, unknown> | null;
+  new_values: Record<string, unknown> | null;
+  request_ip: string | null;
+  user_agent: string | null;
+  created_at: string;
+}
+
 // ====== الأتمتة ======
 
 export type TriggerType =

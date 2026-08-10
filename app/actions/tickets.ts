@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { canManage, requirePerm, requireStaff } from "@/lib/auth";
 import {
   addNoteOp, assignDeveloperOp, assignTesterOp, changeStatusOp, createTicketOp,
-  declineAssignmentOp, setEstimationOp,
+  declineAssignmentOp, respondToAssignmentOp, setEstimationOp,
 } from "@/lib/ops";
 import { getRepo } from "@/lib/db";
 import type { DevStatus, RequestType } from "@/lib/types";
@@ -159,7 +159,7 @@ export async function assignTesterAction(formData: FormData) {
   const repo = await getRepo();
   const t = await repo.ticketByCode(code);
   try {
-    if (t && testerId) await assignTesterOp(t.id, testerId, labelOf(actor), estFromForm(formData));
+    if (t && testerId) await assignTesterOp(t.id, testerId, labelOf(actor), estFromForm(formData), actor.id);
   } catch (e) {
     redirect(`/tickets/${code}?err=${enc(`تعذر إسناد التيست: ${failMsg(e)}`)}`);
   }
@@ -187,7 +187,7 @@ export async function assignDeveloperAction(formData: FormData) {
     redirect(`/tickets/${code}?err=${enc("حدّد فريق الاختبار أولاً — لا يُسنَد المطوّر إلا بعد التيست")}`);
   }
   try {
-    if (developerId) await assignDeveloperOp(t.id, developerId, labelOf(actor), estFromForm(formData));
+    if (developerId) await assignDeveloperOp(t.id, developerId, labelOf(actor), estFromForm(formData), actor.id);
   } catch (e) {
     redirect(`/tickets/${code}?err=${enc(`تعذر إسناد المطور: ${failMsg(e)}`)}`);
   }
@@ -195,7 +195,31 @@ export async function assignDeveloperAction(formData: FormData) {
   redirect(`/tickets/${code}?ok=${enc("تم تعيين المطور وإرسال الإشعارات ✓")}`);
 }
 
-// ═══ الاعتذار عن المهمة (التيست/الديف) بسبب إجباري ═══
+// ═══ قبول/رفض التكليف — مستقل للتيستر والمطور ═══
+export async function respondToAssignmentAction(formData: FormData) {
+  const actor = await requireStaff(["tester", "developer"]);
+  const code = String(formData.get("code") ?? "");
+  const decision = String(formData.get("decision") ?? "") as "accepted" | "declined";
+  const reason = String(formData.get("reason") ?? "").trim();
+  if (!["accepted", "declined"].includes(decision)) redirect(`/tickets/${code}?err=${enc("قرار التكليف غير صحيح")}`);
+  if (decision === "declined" && reason.length < 3) {
+    redirect(`/tickets/${code}?err=${enc("سبب رفض التكليف إجباري ويُرسل في الإيميل")}`);
+  }
+  const repo = await getRepo();
+  const ticket = await repo.ticketByCode(code);
+  if (!ticket) redirect("/dashboard");
+  const result = await respondToAssignmentOp(
+    ticket.id,
+    { staff_id: actor.id, name: actor.name, role: actor.role },
+    decision,
+    reason || undefined,
+  );
+  revalidatePath(`/tickets/${code}`);
+  revalidatePath("/dashboard");
+  redirect(`/tickets/${code}?${result.ok ? `ok=${enc(decision === "accepted" ? "تم قبول التكليف وإبلاغ المسؤولين ✓" : "تم رفض التكليف وإبلاغ المسؤولين بالسبب ✓")}` : `err=${enc(result.error ?? "تعذر تسجيل القرار")}`}`);
+}
+
+// ═══ الاعتذار عن الدعم الفوري بعد القبول (التيست/الديف) بسبب إجباري ═══
 export async function declineAssignmentAction(formData: FormData) {
   const actor = await requireStaff(["tester", "developer"]);
   const code = String(formData.get("code") ?? "");

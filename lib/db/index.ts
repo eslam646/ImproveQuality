@@ -1,7 +1,7 @@
 // طبقة الوصول للبيانات — واجهة موحدة مع تنفيذين: SQLite (محلي) + Supabase (إنتاج)
 import type {
-  AutomationRule, Attachment, Client, Condition, DevStatus, EmailLog, EmailTemplate,
-  Job, Notification, Settings, Staff, Ticket, TicketEvent, Action, TemplateBlocks,
+  AutomationRule, Attachment, AuditEntry, Client, Condition, DevStatus, EmailLog, EmailTemplate,
+  Job, Notification, Settings, Staff, Ticket, TicketAssignment, TicketEvent, Action, TemplateBlocks,
   RequestType, TicketKind, TicketPriority,
 } from "../types";
 
@@ -52,6 +52,20 @@ export interface Repo {
   ticketList(f: TicketFilter): Promise<{ rows: Ticket[]; total: number }>;
   ticketUpdate(id: string, patch: Partial<Ticket>): Promise<Ticket | null>;
   ticketCounts(): Promise<{ total: number; byStatus: Record<string, number> }>;
+
+  assignmentCreate(a: {
+    ticket_id: string; assignment_role: "tester" | "developer"; staff_id: string; assigned_by: string | null;
+  }): Promise<TicketAssignment>;
+  assignmentCurrent(ticketId: string, role: "tester" | "developer"): Promise<TicketAssignment | null>;
+  assignmentRespond(id: string, status: "accepted" | "declined", reason?: string | null): Promise<TicketAssignment | null>;
+  assignmentList(ticketId: string): Promise<TicketAssignment[]>;
+
+  auditAdd(e: {
+    entity_type: string; entity_id: string; action: string; actor_staff_id?: string | null; actor_label?: string | null;
+    old_values?: Record<string, unknown> | null; new_values?: Record<string, unknown> | null;
+    request_ip?: string | null; user_agent?: string | null;
+  }): Promise<AuditEntry>;
+  auditList(entityType: string, entityId: string): Promise<AuditEntry[]>;
 
   eventAdd(e: Omit<TicketEvent, "id" | "created_at">): Promise<TicketEvent>;
   eventList(ticketId: string): Promise<TicketEvent[]>;
