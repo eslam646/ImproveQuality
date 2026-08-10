@@ -1,4 +1,24 @@
-import type { DevStatus, Role } from "./types";
+import type { AssignmentStatus, DevStatus, RequestType, Role, TicketKind } from "./types";
+
+export const REQUEST_TYPE_LABELS: Record<RequestType, string> = {
+  new_development: "طلب تطوير جديد",
+  change_request: "تعديل على طلب سابق",
+  issue: "مشكلة / عطل",
+};
+
+export const TICKET_KIND_LABELS: Record<TicketKind, string> = {
+  standard: "طلب عادي",
+  instant_support: "دعم فوري",
+};
+
+export const ASSIGNMENT_STATUS_LABELS: Record<AssignmentStatus, string> = {
+  unassigned: "غير مُسند",
+  pending: "بانتظار الرد",
+  accepted: "تم القبول",
+  declined: "تم الرفض",
+  reassigned: "أُعيد الإسناد",
+  completed: "مكتمل",
+};
 
 export const STATUS_LABELS: Record<DevStatus, string> = {
   new: "جديد",

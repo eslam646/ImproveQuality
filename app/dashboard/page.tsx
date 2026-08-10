@@ -2,9 +2,9 @@ import Link from "next/link";
 import { getRepo } from "@/lib/db";
 import { requireStaff, canManage, permissionsOf } from "@/lib/auth";
 import { TicketsTable } from "@/components/tickets-table";
-import { ALL_STATUSES, FINAL_STATUSES, STATUS_LABELS } from "@/lib/labels";
+import { ALL_STATUSES, FINAL_STATUSES, REQUEST_TYPE_LABELS, STATUS_LABELS, TICKET_KIND_LABELS } from "@/lib/labels";
 import { Button, inputCls, selectCls } from "@/components/ui";
-import type { DevStatus } from "@/lib/types";
+import type { DevStatus, RequestType, TicketKind } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -25,17 +25,23 @@ export default async function DashboardPage({
   const q = sp.q ?? "";
   const status = (sp.status ?? "") as DevStatus | "";
   const developer_id = sp.developer_id ?? "";
+  const tester_id = sp.tester_id ?? "";
+  const request_type = (sp.request_type ?? "") as RequestType | "";
+  const ticket_kind = (sp.ticket_kind ?? "") as TicketKind | "";
   // المطور يرى تذاكره فقط دائماً — بدون خيار عرض الكل
   const mine = actor.role === "developer";
 
-  const devs = manage
-    ? (await repo.staffList(true)).filter((s) => s.role === "developer")
-    : [];
+  const filterStaff = manage ? await repo.staffList(true) : [];
+  const devs = filterStaff.filter((s) => s.role === "developer");
+  const testers = filterStaff.filter((s) => s.role === "tester");
   const [{ rows, total }, counts] = await Promise.all([
     repo.ticketList({
       q: q || undefined,
       status: status || undefined,
       developer_id: mine ? actor.id : developer_id || undefined,
+      tester_id: actor.role === "tester" ? actor.id : tester_id || undefined,
+      request_type: request_type || undefined,
+      ticket_kind: ticket_kind || undefined,
       // مدخل البيانات يشوف ما يخصّه فقط (أنشأه/مُسند له كمطوّر أو التيست/جديد غير مُسنَد)
       involvesStaffId: actor.role === "support" ? actor.id : undefined,
       page, pageSize: 15,
@@ -55,6 +61,9 @@ export default async function DashboardPage({
     if (q) u.set("q", q);
     if (status) u.set("status", status);
     if (developer_id) u.set("developer_id", developer_id);
+    if (tester_id) u.set("tester_id", tester_id);
+    if (request_type) u.set("request_type", request_type);
+    if (ticket_kind) u.set("ticket_kind", ticket_kind);
     if (sp.mine) u.set("mine", sp.mine);
     u.set("page", String(p));
     return `/dashboard?${u.toString()}`;
@@ -121,11 +130,25 @@ export default async function DashboardPage({
           <option value="">كل الحالات</option>
           {ALL_STATUSES.map((s) => <option key={s} value={s}>{STATUS_LABELS[s]}</option>)}
         </select>
+        <select name="request_type" defaultValue={request_type} className={`${selectCls} max-w-48`}>
+          <option value="">كل أنواع الطلب</option>
+          {Object.entries(REQUEST_TYPE_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+        </select>
+        <select name="ticket_kind" defaultValue={ticket_kind} className={`${selectCls} max-w-44`}>
+          <option value="">عادي + دعم فوري</option>
+          {Object.entries(TICKET_KIND_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+        </select>
         {manage && (
-          <select name="developer_id" defaultValue={developer_id} className={`${selectCls} max-w-48`}>
-            <option value="">كل المطورين</option>
-            {devs.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
-          </select>
+          <>
+            <select name="tester_id" defaultValue={tester_id} className={`${selectCls} max-w-48`}>
+              <option value="">كل مسؤولي الاختبار</option>
+              {testers.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+            </select>
+            <select name="developer_id" defaultValue={developer_id} className={`${selectCls} max-w-48`}>
+              <option value="">كل المطورين</option>
+              {devs.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+            </select>
+          </>
         )}
         <Button type="submit">تصفية</Button>
         <Link href="/dashboard" className="rounded-lg px-3 py-2 text-sm text-slate-500 hover:bg-slate-100">مسح</Link>

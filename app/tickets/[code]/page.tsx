@@ -7,7 +7,7 @@ import {
   declineAssignmentAction, setEstimationAction,
 } from "@/app/actions/tickets";
 import { Badge, Button, Card, Field, Msg, selectCls, inputCls } from "@/components/ui";
-import { allowedTransitions, ROLE_LABELS, STATUS_COLORS, STATUS_LABELS } from "@/lib/labels";
+import { allowedTransitions, ASSIGNMENT_STATUS_LABELS, REQUEST_TYPE_LABELS, ROLE_LABELS, STATUS_COLORS, STATUS_LABELS } from "@/lib/labels";
 import { fmtDate, parseFileRef } from "@/lib/util";
 import { AttachmentUpload } from "@/components/attachment-upload";
 import { StatusChangeForm } from "@/components/status-change-form";
@@ -80,6 +80,8 @@ export default async function TicketDetailsPage({
   const manage = canManage(actor);
   const isAssignedTester = ticket.tester_id === actor.id;
   const isAssignedDev = ticket.developer_id === actor.id;
+  // مدخل البيانات View-only بعد الإنشاء؛ الرفع للأدمن أو المسؤول المسند فقط
+  const canUpload = actor.role === "admin" || isAssignedTester || isAssignedDev;
   const canAssignDev = manage || (actor.role === "tester" && isAssignedTester);
   const transitions = allowedTransitions(actor.role, ticket.dev_status);
   const noteLabel = actor.role === "developer" ? "ملاحظات الديف" : actor.role === "tester" ? "ملاحظات التيست" : "ملاحظة";
@@ -110,10 +112,12 @@ export default async function TicketDetailsPage({
             <dl className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm md:grid-cols-3">
               <div><dt className="text-slate-400">رقم الطلب</dt><dd className="font-bold">#{ticket.seq}</dd></div>
               <div><dt className="text-slate-400">العميل</dt><dd className="font-semibold">{ticket.client_name}</dd></div>
-              <div><dt className="text-slate-400">تواصل العميل</dt><dd>{ticket.client_contact || "—"}</dd></div>
+              <div><dt className="text-slate-400">نوع الطلب</dt><dd>{REQUEST_TYPE_LABELS[ticket.request_type ?? "issue"]}</dd></div>
+              <div className="col-span-2 md:col-span-3"><dt className="text-slate-400">عنوان الطلب / المشكلة</dt><dd className="text-base font-bold">{ticket.title || "—"}</dd></div>
+              <div><dt className="text-slate-400">بريد مدخل البيانات</dt><dd>{ticket.client_contact || "—"}</dd></div>
               <div><dt className="text-slate-400">مدخل البيانات</dt><dd>{ticket.created_by_name}</dd></div>
-              <div><dt className="text-slate-400">المختبِر (التيست)</dt><dd className="font-semibold text-purple-700">{ticket.tester_name ?? "لم يُحدد بعد"}</dd></div>
-              <div><dt className="text-slate-400">المطور</dt><dd className="font-semibold">{ticket.developer_name ?? "غير معيّن"}</dd></div>
+              <div><dt className="text-slate-400">المختبِر (التيست)</dt><dd className="font-semibold text-purple-700">{ticket.tester_name ?? "لم يُحدد بعد"}<span className="block text-xs text-slate-400">{ASSIGNMENT_STATUS_LABELS[ticket.tester_assignment_status ?? "unassigned"]}</span></dd></div>
+              <div><dt className="text-slate-400">المطور</dt><dd className="font-semibold">{ticket.developer_name ?? "غير معيّن"}<span className="block text-xs text-slate-400">{ASSIGNMENT_STATUS_LABELS[ticket.developer_assignment_status ?? "unassigned"]}</span></dd></div>
               <div>
                 <dt className="text-slate-400">⏱️ تقدير التنفيذ</dt>
                 <dd className="font-semibold">
@@ -166,7 +170,11 @@ export default async function TicketDetailsPage({
                 ))}
               </ul>
             )}
-            <AttachmentUpload code={ticket.code} />
+            {canUpload ? (
+              <AttachmentUpload code={ticket.code} />
+            ) : (
+              <p className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-500">🔒 رفع المرفقات بعد الإنشاء متاح فقط للأدمن أو التيستر/المطور المسند على الطلب.</p>
+            )}
           </Card>
 
           {/* سير العمل والإجراءات */}

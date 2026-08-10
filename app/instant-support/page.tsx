@@ -43,8 +43,16 @@ export default async function InstantSupportPage({
             <input name="client_contact" type="email" dir="ltr" className={inputCls} placeholder="client@example.com" />
           </Field>
 
-          <Field label="تفاصيل المشكلة الطارئة *" hint="اكتب ما حدث على السيرفر وتأثيره وما المطلوب فوراً">
-            <textarea name="details" required minLength={5} rows={5} className={inputCls} placeholder="مثال: السيرفر متوقف منذ الساعة… والخدمة المتأثرة…" />
+          <Field label="عنوان المشكلة الطارئة *" hint="عنوان مختصر يظهر في الجدول والإيميلات">
+            <input name="title" required minLength={3} maxLength={180} className={inputCls} placeholder="مثال: توقف خدمة الفواتير على سيرفر الإنتاج" />
+          </Field>
+
+          <Field label="السيرفر / قاعدة البيانات / الخدمة المتأثرة *">
+            <input name="affected_service" required minLength={2} className={inputCls} placeholder="مثال: Production API / SQL Server / خدمة الفواتير" />
+          </Field>
+
+          <Field label="تفاصيل المشكلة الطارئة *" hint="اكتب ما حدث وتأثيره والخطوات التي جُربت وما المطلوب فوراً">
+            <textarea name="details" required minLength={10} rows={9} className={inputCls} placeholder="مثال: السيرفر متوقف منذ الساعة… والخدمة المتأثرة… والخطوات التي تم تنفيذها…" />
           </Field>
 
           <div className="grid gap-4 md:grid-cols-2">

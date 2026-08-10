@@ -8,7 +8,7 @@ import {
   declineAssignmentOp, setEstimationOp,
 } from "@/lib/ops";
 import { getRepo } from "@/lib/db";
-import type { DevStatus } from "@/lib/types";
+import type { DevStatus, RequestType } from "@/lib/types";
 import { allowedTransitions, NOTE_REQUIRED_STATUSES, ROLE_LABELS } from "@/lib/labels";
 
 function enc(msg: string) { return encodeURIComponent(msg); }
@@ -46,6 +46,9 @@ export async function createTicketAction(formData: FormData) {
     }
   }
   const client_contact = String(formData.get("client_contact") ?? "").trim();
+  const request_type = String(formData.get("request_type") ?? "issue") as RequestType;
+  const title = String(formData.get("title") ?? "").trim();
+  const linked_ticket_code = String(formData.get("linked_ticket_code") ?? "").trim();
   const details = String(formData.get("details") ?? "").trim();
   const developer_id = String(formData.get("developer_id") ?? "").trim();
   const tester_id = String(formData.get("tester_id") ?? "").trim();
@@ -53,11 +56,15 @@ export async function createTicketAction(formData: FormData) {
 
   const fail = (msg: string): never => redirect(`/tickets/new?err=${enc(msg)}`);
   if (need("client") && !client_id && client_name.length < 2) fail("اسم العميل إجباري — اختر من القائمة أو اكتبه");
-  if (need("client_contact") && !client_contact) fail("وسيلة تواصل العميل إجبارية");
-  if (need("details") && details.length < 5) fail("اكتب تفاصيل كافية للطلب (5 أحرف على الأقل)");
+  if (need("client_contact") && !client_contact) fail("بريد مدخل البيانات إجباري");
+  if (!["new_development", "change_request", "issue"].includes(request_type)) fail("نوع الطلب غير صحيح");
+  if (title.length < 3) fail("عنوان الطلب / المشكلة إجباري (3 أحرف على الأقل)");
+  if (need("details") && details.length < 10) fail("اكتب تفاصيل وخطوات كافية للطلب (10 أحرف على الأقل)");
   if (need("developer") && !developer_id) fail("إسناد المطور إجباري");
   if (client_name.length < 2) fail("اختر العميل من القائمة أو اكتب اسمه");
-  if (details.length < 5) fail("اكتب تفاصيل كافية للطلب");
+  if (details.length < 10) fail("اكتب تفاصيل وخطوات كافية للطلب");
+  if (!tester_id) fail("اختيار فريق الاختبار إجباري قبل إرسال الطلب");
+  if (request_type === "change_request" && !linked_ticket_code) fail("اكتب كود الطلب السابق المطلوب تعديله");
   // القاعدة الذهبية: لا مطوّر قبل المختبِر أولاً
   if (developer_id && !tester_id) fail("حدّد فريق الاختبار أولاً — لا يُسنَد المطوّر إلا بعد التيست");
 
@@ -74,8 +81,17 @@ export async function createTicketAction(formData: FormData) {
 
   const creator = (await repo.staffGet(creator_id)) ?? actor;
   const label = creator.id === actor.id ? creator.name : `${creator.name} (أدخله ${actor.name})`;
+  const linkedTicket = linked_ticket_code ? await repo.ticketByCode(linked_ticket_code) : null;
+  if (request_type === "change_request" && !linkedTicket) fail("كود الطلب السابق غير موجود");
   const ticket = await createTicketOp({
-    client_name, client_contact: client_contact || null, details,
+    client_name,
+    client_contact: client_contact || creator.email || null,
+    title,
+    details,
+    request_type,
+    ticket_kind: "standard",
+    priority: "normal",
+    linked_ticket_id: linkedTicket?.id ?? null,
     developer_id: developer_id || null,
     tester_id: tester_id || null,
     is_urgent: formData.get("is_urgent") === "1",
@@ -93,7 +109,9 @@ export async function createInstantSupportAction(formData: FormData) {
   const client_id = String(formData.get("client_id") ?? "").trim();
   let client_name = String(formData.get("client_name") ?? "").trim();
   let client_contact = String(formData.get("client_contact") ?? "").trim();
+  const title = String(formData.get("title") ?? "").trim();
   const details = String(formData.get("details") ?? "").trim();
+  const affected_service = String(formData.get("affected_service") ?? "").trim();
   const tester_id = String(formData.get("tester_id") ?? "").trim();
   const developer_id = String(formData.get("developer_id") ?? "").trim();
   const fail = (msg: string): never => redirect(`/instant-support?err=${enc(msg)}`);
@@ -106,14 +124,22 @@ export async function createInstantSupportAction(formData: FormData) {
     }
   }
   if (client_name.length < 2) fail("اختر العميل أو اكتب اسمه");
-  if (details.length < 5) fail("اكتب تفاصيل المشكلة الطارئة بوضوح");
+  if (title.length < 3) fail("عنوان المشكلة الطارئة إجباري");
+  if (affected_service.length < 2) fail("حدد السيرفر أو قاعدة البيانات أو الخدمة المتأثرة");
+  if (details.length < 10) fail("اكتب تفاصيل المشكلة الطارئة وخطواتها بوضوح");
   if (!tester_id) fail("اختيار مسؤول الاختبار إجباري في الدعم الفوري");
   if (!developer_id) fail("اختيار المطور إجباري في الدعم الفوري");
 
   const ticket = await createTicketOp({
     client_name,
-    client_contact: client_contact || null,
+    client_contact: client_contact || actor.email || null,
+    title,
     details,
+    request_type: "issue",
+    ticket_kind: "instant_support",
+    priority: "critical",
+    urgent_reason: details,
+    affected_service,
     tester_id,
     developer_id,
     is_urgent: true,

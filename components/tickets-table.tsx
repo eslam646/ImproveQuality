@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { Badge, EmptyState } from "@/components/ui";
-import { STATUS_COLORS, STATUS_LABELS } from "@/lib/labels";
+import { ASSIGNMENT_STATUS_LABELS, REQUEST_TYPE_LABELS, STATUS_COLORS, STATUS_LABELS, TICKET_KIND_LABELS } from "@/lib/labels";
 import type { Ticket } from "@/lib/types";
 import { fmtDate } from "@/lib/util";
 
@@ -16,13 +16,14 @@ export function TicketsTable({ rows, readOnlyNote }: { rows: Ticket[]; readOnlyN
           <tr className="border-b border-slate-200 bg-slate-50 text-right text-xs text-slate-500">
             <th className="px-4 py-3">رقم</th>
             <th className="px-4 py-3">كود الطلب</th>
+            <th className="px-4 py-3">التصنيف</th>
             <th className="px-4 py-3">العميل</th>
-            <th className="px-4 py-3">التفاصيل</th>
+            <th className="px-4 py-3">العنوان / التفاصيل</th>
             <th className="px-4 py-3">مدخل البيانات</th>
+            <th className="px-4 py-3">التيستر</th>
             <th className="px-4 py-3">المطور</th>
-            <th className="px-4 py-3">حالة التطوير</th>
-            <th className="px-4 py-3">المصدر</th>
-            <th className="px-4 py-3">آخر تحديث للحالة</th>
+            <th className="px-4 py-3">الحالة</th>
+            <th className="px-4 py-3">آخر تحديث</th>
           </tr>
         </thead>
         <tbody>
@@ -34,16 +35,27 @@ export function TicketsTable({ rows, readOnlyNote }: { rows: Ticket[]; readOnlyN
                   {t.code}
                 </Link>
               </td>
+              <td className="px-4 py-2.5 text-xs">
+                <div className={`mb-1 w-fit rounded-full px-2 py-0.5 font-bold ${t.ticket_kind === "instant_support" || t.is_urgent ? "bg-rose-100 text-rose-700" : "bg-slate-100 text-slate-600"}`}>
+                  {t.ticket_kind === "instant_support" || t.is_urgent ? "🚨 دعم فوري" : TICKET_KIND_LABELS.standard}
+                </div>
+                <div className="text-slate-500">{REQUEST_TYPE_LABELS[t.request_type ?? "issue"]}</div>
+              </td>
               <td className="px-4 py-2.5 font-semibold">{t.client_name}</td>
-              <td className="max-w-56 px-4 py-2.5">
-                <span className="line-clamp-2 text-slate-600">{t.details}</span>
+              <td className="max-w-72 px-4 py-2.5">
+                <div className="font-bold text-slate-800">{t.title || "بدون عنوان"}</div>
+                <span className="line-clamp-2 text-xs text-slate-500">{t.details}</span>
               </td>
               <td className="px-4 py-2.5 text-slate-600">{t.created_by_name}</td>
-              <td className="px-4 py-2.5 text-slate-600">{t.developer_name ?? <span className="text-slate-400">—</span>}</td>
-              <td className="px-4 py-2.5"><Badge color={STATUS_COLORS[t.dev_status]}>{STATUS_LABELS[t.dev_status]}</Badge></td>
-              <td className="px-4 py-2.5 text-xs text-slate-500">
-                {t.source === "web_guest" ? "نموذج عام" : t.source === "update_form" ? "نموذج تحديث" : "داخلي"}
+              <td className="px-4 py-2.5 text-slate-600">
+                <div>{t.tester_name ?? <span className="text-slate-400">—</span>}</div>
+                <div className="text-[11px] text-slate-400">{ASSIGNMENT_STATUS_LABELS[t.tester_assignment_status ?? "unassigned"]}</div>
               </td>
+              <td className="px-4 py-2.5 text-slate-600">
+                <div>{t.developer_name ?? <span className="text-slate-400">—</span>}</div>
+                <div className="text-[11px] text-slate-400">{ASSIGNMENT_STATUS_LABELS[t.developer_assignment_status ?? "unassigned"]}</div>
+              </td>
+              <td className="px-4 py-2.5"><Badge color={STATUS_COLORS[t.dev_status]}>{STATUS_LABELS[t.dev_status]}</Badge></td>
               <td className="px-4 py-2.5 text-xs text-slate-500">{fmtDate(t.last_status_change)}</td>
             </tr>
           ))}

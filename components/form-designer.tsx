@@ -6,11 +6,14 @@ import { saveFormFieldsAction } from "@/app/actions/admin";
 
 const SCOPE_HINT: Record<string, string> = {
   client: "قائمة منسدلة + كتابة حرة",
-  client_contact: "يستقبل إشعارات إن كان بريداً",
-  details: "نص المشكلة",
-  creator: "النموذج الداخلي فقط",
-  developer: "النموذج الداخلي فقط",
-  attachment: "نموذج الضيوف فقط",
+  client_contact: "بريد مدخل البيانات — العميل نفسه لا يحتاج بريداً",
+  request_type: "تطوير جديد / تعديل سابق / مشكلة",
+  title: "عنوان مختصر يظهر في الجدول والإيميل",
+  details: "تفاصيل وخطوات طويلة",
+  creator: "هوية مقدم الطلب",
+  tester: "إجباري لمراجعة اكتمال الطلب",
+  developer: "اختياري في البداية",
+  attachment: "إجباري حسب سياسة النموذج",
 };
 
 export function FormDesigner({ initial }: { initial: FormFieldCfg[] }) {

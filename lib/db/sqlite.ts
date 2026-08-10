@@ -90,6 +90,22 @@ export function createSqliteRepo(): Repo {
   try { db.exec("ALTER TABLE tickets ADD COLUMN est_hours REAL"); } catch { /* موجود */ }
   try { db.exec("ALTER TABLE tickets ADD COLUMN est_days REAL"); } catch { /* موجود */ }
   try { db.exec("ALTER TABLE tickets ADD COLUMN is_urgent INTEGER NOT NULL DEFAULT 0"); } catch { /* موجود */ }
+  try { db.exec("ALTER TABLE tickets ADD COLUMN title TEXT"); } catch { /* موجود */ }
+  try { db.exec("ALTER TABLE tickets ADD COLUMN request_type TEXT NOT NULL DEFAULT 'issue'"); } catch { /* موجود */ }
+  try { db.exec("ALTER TABLE tickets ADD COLUMN ticket_kind TEXT NOT NULL DEFAULT 'standard'"); } catch { /* موجود */ }
+  try { db.exec("ALTER TABLE tickets ADD COLUMN priority TEXT NOT NULL DEFAULT 'normal'"); } catch { /* موجود */ }
+  try { db.exec("ALTER TABLE tickets ADD COLUMN overall_status TEXT NOT NULL DEFAULT 'new'"); } catch { /* موجود */ }
+  try { db.exec("ALTER TABLE tickets ADD COLUMN tester_assignment_status TEXT NOT NULL DEFAULT 'unassigned'"); } catch { /* موجود */ }
+  try { db.exec("ALTER TABLE tickets ADD COLUMN developer_assignment_status TEXT NOT NULL DEFAULT 'unassigned'"); } catch { /* موجود */ }
+  try { db.exec("ALTER TABLE tickets ADD COLUMN linked_ticket_id TEXT"); } catch { /* موجود */ }
+  try { db.exec("ALTER TABLE tickets ADD COLUMN urgent_reason TEXT"); } catch { /* موجود */ }
+  try { db.exec("ALTER TABLE tickets ADD COLUMN affected_service TEXT"); } catch { /* موجود */ }
+  try { db.exec("ALTER TABLE tickets ADD COLUMN urgent_requested_at TEXT"); } catch { /* موجود */ }
+  try { db.exec("ALTER TABLE tickets ADD COLUMN urgent_started_at TEXT"); } catch { /* موجود */ }
+  try { db.exec("ALTER TABLE tickets ADD COLUMN urgent_ended_at TEXT"); } catch { /* موجود */ }
+  try { db.exec("ALTER TABLE tickets ADD COLUMN urgent_result TEXT"); } catch { /* موجود */ }
+  try { db.exec("ALTER TABLE tickets ADD COLUMN actual_minutes INTEGER"); } catch { /* موجود */ }
+  try { db.exec("ALTER TABLE tickets ADD COLUMN version INTEGER NOT NULL DEFAULT 1"); } catch { /* موجود */ }
 
   // بذر العملاء مستقل عن بذر الموظفين (يعمل حتى على القواعد القديمة)
   const clientCount = db.prepare("SELECT COUNT(*) c FROM clients").get() as { c: number };
@@ -281,22 +297,44 @@ export function createSqliteRepo(): Repo {
 
     async ticketCreate(input) {
       const t = nowIso();
-      const ins = db.prepare(`INSERT INTO tickets (id,code,client_name,client_contact,details,created_by,created_by_name,developer_id,developer_name,dev_status,source,last_status_change,created_at,updated_at,custom_data,tester_id,tester_name,is_urgent)
-        VALUES (?,?,?,?,?,?,?,?,?,'new',?,?,?,?,?,?,?,?)`);
+      const ins = db.prepare(`INSERT INTO tickets (
+        id,code,client_name,client_contact,title,details,request_type,ticket_kind,priority,overall_status,
+        tester_assignment_status,developer_assignment_status,linked_ticket_id,urgent_reason,affected_service,urgent_requested_at,
+        created_by,created_by_name,developer_id,developer_name,dev_status,source,last_status_change,created_at,updated_at,
+        custom_data,tester_id,tester_name,is_urgent
+      ) VALUES (
+        @id,@code,@client_name,@client_contact,@title,@details,@request_type,@ticket_kind,@priority,@overall_status,
+        @tester_assignment_status,@developer_assignment_status,@linked_ticket_id,@urgent_reason,@affected_service,@urgent_requested_at,
+        @created_by,@created_by_name,@developer_id,@developer_name,'new',@source,@stamp,@stamp,@stamp,
+        @custom_data,@tester_id,@tester_name,@is_urgent
+      )`);
       let code = input.code;
-      const row = { id: genId("tk") };
-      const customJson = JSON.stringify(input.custom_data ?? {});
+      const id = genId("tk");
+      const urgent = input.ticket_kind === "instant_support" || !!input.is_urgent;
       for (let i = 0; i < 5; i++) {
         try {
-          ins.run(row.id, code, input.client_name, input.client_contact, input.details, input.created_by, input.created_by_name, input.developer_id, input.developer_name, input.source, t, t, t, customJson,
-            input.tester_id ?? null, input.tester_name ?? null, input.is_urgent ? 1 : 0);
+          ins.run({
+            id, code, client_name: input.client_name, client_contact: input.client_contact,
+            title: input.title ?? null, details: input.details, request_type: input.request_type ?? "issue",
+            ticket_kind: urgent ? "instant_support" : (input.ticket_kind ?? "standard"),
+            priority: input.priority ?? (urgent ? "critical" : "normal"),
+            overall_status: input.tester_id ? "awaiting_tester" : "new",
+            tester_assignment_status: input.tester_id ? "pending" : "unassigned",
+            developer_assignment_status: input.developer_id ? "pending" : "unassigned",
+            linked_ticket_id: input.linked_ticket_id ?? null, urgent_reason: input.urgent_reason ?? null,
+            affected_service: input.affected_service ?? null, urgent_requested_at: urgent ? t : null,
+            created_by: input.created_by, created_by_name: input.created_by_name,
+            developer_id: input.developer_id, developer_name: input.developer_name,
+            source: input.source, stamp: t, custom_data: JSON.stringify(input.custom_data ?? {}),
+            tester_id: input.tester_id ?? null, tester_name: input.tester_name ?? null, is_urgent: urgent ? 1 : 0,
+          });
           break;
         } catch (e) {
           if (String(e).includes("UNIQUE") && i < 4) { code = genTicketCode(); continue; }
           throw e;
         }
       }
-      const r = db.prepare("SELECT * FROM tickets WHERE id=?").get(row.id) as TicketRow | undefined;
+      const r = db.prepare("SELECT * FROM tickets WHERE id=?").get(id) as TicketRow | undefined;
       if (!r) throw new Error("تعذر إنشاء الطلب");
       return mapTicket(r);
     },
@@ -311,9 +349,12 @@ export function createSqliteRepo(): Repo {
     async ticketList(f: TicketFilter) {
       const where: string[] = [];
       const args: unknown[] = [];
-      if (f.q) { where.push("(code LIKE ? OR client_name LIKE ?)"); args.push(`%${f.q}%`, `%${f.q}%`); }
+      if (f.q) { where.push("(code LIKE ? OR client_name LIKE ? OR title LIKE ?)"); args.push(`%${f.q}%`, `%${f.q}%`, `%${f.q}%`); }
       if (f.status) { where.push("dev_status=?"); args.push(f.status); }
       if (f.developer_id) { where.push("developer_id=?"); args.push(f.developer_id); }
+      if (f.tester_id) { where.push("tester_id=?"); args.push(f.tester_id); }
+      if (f.request_type) { where.push("request_type=?"); args.push(f.request_type); }
+      if (f.ticket_kind) { where.push("ticket_kind=?"); args.push(f.ticket_kind); }
       if (f.source) { where.push("source=?"); args.push(f.source); }
       if (f.involvesStaffId) {
         where.push("(created_by=? OR developer_id=? OR tester_id=? OR (tester_id IS NULL AND developer_id IS NULL))");
@@ -333,7 +374,13 @@ export function createSqliteRepo(): Repo {
     async ticketUpdate(id, patch) {
       const sets: string[] = [];
       const args: unknown[] = [];
-      const fields = ["client_name", "client_contact", "details", "developer_id", "developer_name", "dev_status", "last_status_change", "updated_at", "tester_id", "tester_name", "est_hours", "est_days", "is_urgent"] as const;
+      const fields = [
+        "client_name", "client_contact", "title", "details", "request_type", "ticket_kind", "priority", "overall_status",
+        "tester_assignment_status", "developer_assignment_status", "linked_ticket_id", "urgent_reason", "affected_service",
+        "urgent_requested_at", "urgent_started_at", "urgent_ended_at", "urgent_result", "actual_minutes", "version",
+        "developer_id", "developer_name", "dev_status", "last_status_change", "updated_at", "tester_id", "tester_name",
+        "est_hours", "est_days", "is_urgent",
+      ] as const;
       for (const k of fields) {
         if (patch[k] !== undefined) { sets.push(`${k}=?`); args.push(patch[k] as unknown); }
       }

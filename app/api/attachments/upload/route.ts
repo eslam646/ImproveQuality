@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
 import fs from "fs/promises";
 import path from "path";
 import { getRepo } from "@/lib/db";
-import { AUTH_COOKIE } from "@/lib/auth";
+import { currentStaff } from "@/lib/auth";
 import { genId } from "@/lib/util";
 
-const MAX_BYTES = 4 * 1024 * 1024; // 4MB
+const MAX_MB = Math.max(4, Math.min(100, Number(process.env.MAX_ATTACHMENT_MB || 25)));
+const MAX_BYTES = MAX_MB * 1024 * 1024; // مؤقتاً عبر التطبيق؛ V2 سينقل الفيديو الكبير إلى R2 Direct Upload
 
 // رفع مرفق: يقبل أعضاء الفريق (كوكي) أو أي شخص يملك كود الطلب (عام، مثل فلسفة النماذج)
 export async function POST(req: Request) {
@@ -14,19 +14,21 @@ export async function POST(req: Request) {
   const code = String(form.get("code") ?? "").trim();
   const file = form.get("file");
   if (!(file instanceof File)) return NextResponse.json({ error: "الملف مطلوب" }, { status: 400 });
-  if (file.size > MAX_BYTES) return NextResponse.json({ error: "الحد الأقصى 4 ميجابايت" }, { status: 400 });
+  if (file.size > MAX_BYTES) return NextResponse.json({ error: `الحد الأقصى الحالي ${MAX_MB} ميجابايت` }, { status: 400 });
 
   const repo = await getRepo();
   const ticket = await repo.ticketByCode(code);
   if (!ticket) return NextResponse.json({ error: "كود الطلب غير موجود" }, { status: 404 });
 
-  let uploader = "زائر (عبر كود الطلب)";
-  const store = await cookies();
-  const sid = store.get(AUTH_COOKIE)?.value;
-  if (sid) {
-    const s = await repo.staffGet(sid);
-    if (s) uploader = s.name;
+  const actor = await currentStaff();
+  const initialGuestWindow = ticket.source === "web_guest" && Date.now() - new Date(ticket.created_at).getTime() <= 15 * 60_000;
+  const allowed = actor
+    ? actor.role === "admin" || ticket.tester_id === actor.id || ticket.developer_id === actor.id
+    : initialGuestWindow;
+  if (!allowed) {
+    return NextResponse.json({ error: "رفع المرفقات غير مسموح: للأدمن أو المسؤول المسند فقط، أو أثناء إنشاء الطلب العام" }, { status: 403 });
   }
+  const uploader = actor?.name ?? "مقدم الطلب (أثناء الإنشاء)";
 
   const safeName = file.name.replace(/[^\w.\u0600-\u06FF-]+/g, "_").slice(-80);
   const fname = `${Date.now()}_${safeName}`;

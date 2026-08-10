@@ -2,6 +2,16 @@
 
 export type Role = "admin" | "support" | "developer" | "tester";
 
+// ====== V2: تصنيف الطلب ودورة الإسناد ======
+export type RequestType = "new_development" | "change_request" | "issue";
+export type TicketKind = "standard" | "instant_support";
+export type TicketPriority = "low" | "normal" | "high" | "critical";
+export type AssignmentStatus = "unassigned" | "pending" | "accepted" | "declined" | "reassigned" | "completed";
+export type OverallStatus =
+  | "new" | "awaiting_tester" | "needs_info" | "awaiting_developer"
+  | "in_development" | "hold" | "delivered_to_qc" | "testing"
+  | "reopened" | "fixed" | "delivered" | "closed" | "rejected";
+
 export type DevStatus =
   | "new"
   | "in_progress"
@@ -30,6 +40,22 @@ export interface Ticket {
   code: string;
   client_name: string;
   client_contact: string | null;
+  title?: string | null;
+  request_type?: RequestType;
+  ticket_kind?: TicketKind;
+  priority?: TicketPriority;
+  overall_status?: OverallStatus;
+  tester_assignment_status?: AssignmentStatus;
+  developer_assignment_status?: AssignmentStatus;
+  linked_ticket_id?: string | null;
+  urgent_reason?: string | null;
+  affected_service?: string | null;
+  urgent_requested_at?: string | null;
+  urgent_started_at?: string | null;
+  urgent_ended_at?: string | null;
+  urgent_result?: string | null;
+  actual_minutes?: number | null;
+  version?: number;
   details: string;
   created_by: string | null; // staff id (null للضيوف)
   created_by_name: string; // اسم المدخل كما ظهر وقت الإنشاء
@@ -182,11 +208,14 @@ export interface Settings {
 // مفاتيح حقول النماذج الخاضعة للتحكم (طلب داخلي + نموذج الضيوف)
 export type FormFieldKey =
   | "client"          // اسم العميل (قائمة منسدلة + كتابة حرة)
-  | "client_contact"  // وسيلة تواصل العميل
-  | "details"         // تفاصيل الطلب
-  | "creator"         // مدخل البيانات (النموذج الداخلي فقط)
-  | "developer"       // إسناد لمطور (النموذج الداخلي فقط)
-  | "attachment";     // رفع مرفق (نموذج الضيوف فقط)
+  | "client_contact"  // وسيلة تواصل مدخل البيانات (ليس بريد العميل)
+  | "request_type"    // جديد / تعديل / مشكلة
+  | "title"           // عنوان مختصر وواضح
+  | "details"         // تفاصيل وخطوات طويلة
+  | "creator"         // مدخل البيانات
+  | "tester"          // التيستر المسؤول
+  | "developer"       // المطور (اختياري في الطلب العادي)
+  | "attachment";     // مرفق الإنشاء
 
 export interface FormFieldCfg {
   key: FormFieldKey;
@@ -197,11 +226,14 @@ export interface FormFieldCfg {
 
 export const DEFAULT_FORM_FIELDS: FormFieldCfg[] = [
   { key: "client", label: "اسم العميل", visible: true, required: true },
-  { key: "client_contact", label: "وسيلة تواصل العميل", visible: true, required: false },
-  { key: "details", label: "تفاصيل الطلب", visible: true, required: true },
-  { key: "creator", label: "مدخل البيانات", visible: true, required: false },
+  { key: "client_contact", label: "بريد مدخل البيانات", visible: false, required: false },
+  { key: "request_type", label: "نوع الطلب", visible: true, required: true },
+  { key: "title", label: "عنوان الطلب / المشكلة", visible: true, required: true },
+  { key: "details", label: "التفاصيل والخطوات", visible: true, required: true },
+  { key: "creator", label: "مدخل البيانات", visible: true, required: true },
+  { key: "tester", label: "فريق الاختبار", visible: true, required: true },
   { key: "developer", label: "إسناد إلى مطور", visible: true, required: false },
-  { key: "attachment", label: "رفع مرفق", visible: true, required: false },
+  { key: "attachment", label: "المرفقات", visible: true, required: true },
 ];
 
 // عميل في القائمة المنسدلة (بديل قوائم Lark)

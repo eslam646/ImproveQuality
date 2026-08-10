@@ -5,7 +5,7 @@ import { emit } from "./engine";
 import { sendMail } from "./email";
 import { wrapEmail } from "./templates";
 import { ROLE_LABELS, STATUS_LABELS } from "./labels";
-import type { DevStatus, Role, Settings, Staff, Ticket } from "./types";
+import type { DevStatus, RequestType, Role, Settings, Staff, Ticket, TicketKind, TicketPriority } from "./types";
 import { escapeHtml, genTicketCode, isEmail, nowIso } from "./util";
 
 // ═══ بريد الأطراف المباشر: إيميل + تسجيل + إشعار داخلي ═══
@@ -90,7 +90,9 @@ const TRACK_ROW = (t: Ticket, s: Settings) =>
 // ═══ إنشاء طلب ═══
 export async function createTicketOp(input: {
   client_id?: string | null;
-  client_name: string; client_contact: string | null; details: string;
+  client_name: string; client_contact: string | null; title?: string | null; details: string;
+  request_type?: RequestType; ticket_kind?: TicketKind; priority?: TicketPriority;
+  linked_ticket_id?: string | null; urgent_reason?: string | null; affected_service?: string | null;
   developer_id?: string | null;
   tester_id?: string | null;
   is_urgent?: boolean;
@@ -127,19 +129,28 @@ export async function createTicketOp(input: {
     const ts = await repo.staffGet(input.tester_id);
     tester_name = ts?.name ?? null;
   }
+  const urgent = input.ticket_kind === "instant_support" || !!input.is_urgent;
   const ticket = await repo.ticketCreate({
     client_name: clientName, client_contact: contact || null,
-    details: input.details, created_by: creatorId, created_by_name: creatorLabel,
+    title: input.title?.trim() || null,
+    details: input.details,
+    request_type: input.request_type ?? "issue",
+    ticket_kind: urgent ? "instant_support" : (input.ticket_kind ?? "standard"),
+    priority: input.priority ?? (urgent ? "critical" : "normal"),
+    linked_ticket_id: input.linked_ticket_id ?? null,
+    urgent_reason: input.urgent_reason ?? null,
+    affected_service: input.affected_service ?? null,
+    created_by: creatorId, created_by_name: creatorLabel,
     developer_id: input.developer_id || null, developer_name, source: input.source,
     code: genTicketCode(),
     custom_data: input.custom_data ?? {},
     tester_id: input.tester_id ?? null, tester_name,
-    is_urgent: !!input.is_urgent,
+    is_urgent: urgent,
   });
 
   const evt = await repo.eventAdd({
     ticket_id: ticket.id, type: "ticket.created", actor_label: input.actor.label,
-    old_values: null, new_values: { client_name: ticket.client_name, source: ticket.source, urgent: !!input.is_urgent },
+    old_values: null, new_values: { client_name: ticket.client_name, source: ticket.source, urgent: urgent },
   });
   await emit({ id: evt.id, type: "ticket.created", ctx: { ticket, old: null, actor_label: input.actor.label } });
 
@@ -150,13 +161,13 @@ export async function createTicketOp(input: {
     });
     await mailParties({
       ticket, to: ["tester"], excludeStaffId: input.actor.staff_id,
-      subject: `${input.is_urgent ? "🚨 دعم فوري — " : "🧪 "}أُسند إليك اختبار الطلب ${ticket.code}`,
-      bodyHtml: `<p>أُسند إليك اختبار طلب <b dir="ltr">${esc(ticket.code)}</b>${input.is_urgent ? " — <b style='color:#dc2626'>دعم فوري عاجل</b>" : ""}</p>
+      subject: `${urgent ? "🚨 دعم فوري — " : "🧪 "}أُسند إليك اختبار الطلب ${ticket.code}`,
+      bodyHtml: `<p>أُسند إليك اختبار طلب <b dir="ltr">${esc(ticket.code)}</b>${urgent ? " — <b style='color:#dc2626'>دعم فوري عاجل</b>" : ""}</p>
         <p><b>العميل:</b> ${esc(ticket.client_name)}</p>
         <p><b>التفاصيل:</b><br>${esc(ticket.details).replaceAll("\n", "<br>")}</p>
         <p><b>من:</b> ${esc(input.actor.label)}</p>`,
       notifyTo: ["tester"],
-      notifyMessage: `أُسند إليك اختبار ${ticket.code}${input.is_urgent ? " 🚨" : ""}`,
+      notifyMessage: `أُسند إليك اختبار ${ticket.code}${urgent ? " 🚨" : ""}`,
     });
   }
   if (input.developer_id) {
@@ -175,7 +186,13 @@ export async function assignTesterOp(
   if (!old) return null;
   const ts = await repo.staffGet(testerId);
   if (!ts || ts.role !== "tester") return old;
-  const patch: Partial<Ticket> = { tester_id: testerId, tester_name: ts.name, updated_at: nowIso() };
+  const patch: Partial<Ticket> = {
+    tester_id: testerId,
+    tester_name: ts.name,
+    tester_assignment_status: "pending",
+    overall_status: "awaiting_tester",
+    updated_at: nowIso(),
+  };
   if (est?.days != null) patch.est_days = est.days;
   if (est?.hours != null) patch.est_hours = est.hours;
   const ticket = await repo.ticketUpdate(ticketId, patch);
@@ -220,7 +237,13 @@ export async function assignDeveloperOp(
   const old = await repo.ticketById(ticketId);
   if (!old) return null;
   const dev = await repo.staffGet(developerId);
-  const patch: Partial<Ticket> = { developer_id: developerId, developer_name: dev?.name ?? null, updated_at: nowIso() };
+  const patch: Partial<Ticket> = {
+    developer_id: developerId,
+    developer_name: dev?.name ?? null,
+    developer_assignment_status: "pending",
+    overall_status: "awaiting_developer",
+    updated_at: nowIso(),
+  };
   if (est?.days != null) patch.est_days = est.days;
   if (est?.hours != null) patch.est_hours = est.hours;
   const ticket = await repo.ticketUpdate(ticketId, patch);
@@ -250,8 +273,8 @@ export async function declineAssignmentOp(
   if (!isTester && !isDev) return { ok: false, error: "المهمة غير مسندة إليك حالياً" };
 
   const patch: Partial<Ticket> = isTester
-    ? { tester_id: null, tester_name: null, updated_at: nowIso() }
-    : { developer_id: null, developer_name: null, updated_at: nowIso() };
+    ? { tester_id: null, tester_name: null, tester_assignment_status: "declined", overall_status: "awaiting_tester", updated_at: nowIso() }
+    : { developer_id: null, developer_name: null, developer_assignment_status: "declined", overall_status: "awaiting_developer", updated_at: nowIso() };
   const updated = await repo.ticketUpdate(ticketId, patch);
   if (!updated) return { ok: false, error: "تعذر التحديث" };
 

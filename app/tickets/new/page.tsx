@@ -3,6 +3,7 @@ import { requirePerm } from "@/lib/auth";
 import { createTicketAction } from "@/app/actions/tickets";
 import { Button, Card, Field, inputCls, Msg, selectCls } from "@/components/ui";
 import { CustomFieldInput } from "@/components/public-forms";
+import { REQUEST_TYPE_LABELS } from "@/lib/labels";
 
 export const dynamic = "force-dynamic";
 
@@ -42,14 +43,28 @@ export default async function NewTicketPage({
               <input name="client_name" className={`${inputCls} mt-2`} placeholder="أو اكتب اسم عميل جديد غير مسجل بالقائمة" />
             </Field>
           )}
+          {show("request_type") && (
+            <Field label={`${labelOf("request_type")}${star("request_type")}`}>
+              <select name="request_type" required={req("request_type")} className={selectCls} defaultValue="issue">
+                {Object.entries(REQUEST_TYPE_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+              </select>
+              <p className="mt-2 text-xs text-slate-500">عند اختيار «تعديل على طلب سابق» اكتب كود الطلب الأصلي:</p>
+              <input name="linked_ticket_code" dir="ltr" className={`${inputCls} mt-1 font-mono`} placeholder="T-XXXXXXXX (اختياري إلا عند التعديل)" />
+            </Field>
+          )}
+          {show("title") && (
+            <Field label={`${labelOf("title")}${star("title")}`} hint="عنوان مختصر يظهر في الجدول والإيميلات">
+              <input name="title" required={req("title")} minLength={3} maxLength={180} className={inputCls} placeholder="مثال: توقف مزامنة الفواتير بعد تحديث النظام" />
+            </Field>
+          )}
           {show("client_contact") && (
-            <Field label={`${labelOf("client_contact")}${star("client_contact")}`} hint="بريد إلكتروني → سيصله إشعار تلقائي عند إنشاء الطلب وتحديثه">
-              <input name="client_contact" className={inputCls} placeholder="client@example.com أو رقم هاتف" />
+            <Field label={`${labelOf("client_contact")}${star("client_contact")}`} hint="البريد الخاص بمدخل البيانات، وليس بريد العميل">
+              <input name="client_contact" type="email" dir="ltr" className={inputCls} placeholder="requester@company.com" />
             </Field>
           )}
           {show("details") && (
-            <Field label={`${labelOf("details")}${star("details")}`}>
-              <textarea name="details" rows={5} className={inputCls} placeholder="اشرح المشكلة أو الطلب بالتفصيل…" />
+            <Field label={`${labelOf("details")}${star("details")}`} hint="اكتب الوصف والخطوات والنتيجة المتوقعة والفعلية بدون اختصار">
+              <textarea name="details" required={req("details")} minLength={10} rows={12} className={inputCls} placeholder="اشرح الطلب أو المشكلة بالتفصيل، وخطوات إعادة المشكلة، والنتيجة الحالية والمتوقعة…" />
             </Field>
           )}
           {show("creator") && (
@@ -59,21 +74,21 @@ export default async function NewTicketPage({
               </select>
             </Field>
           )}
+          {show("tester") && (
+            <Field label={`${labelOf("tester")}${star("tester")}`} hint="التيستر يراجع اكتمال البيانات والمرفقات أولاً؛ سيصله إيميل التكليف">
+              <select name="tester_id" required className={selectCls} defaultValue="">
+                <option value="" disabled>— اختر مسؤول الاختبار —</option>
+                {testers.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+              </select>
+            </Field>
+          )}
           {show("developer") && (
-            <>
-              <Field label="إسناد إلى مختبِر (التيست)" hint="التيست يستلم الطلب أولاً ثم يسلّمه للمطوّر — يُرسل إيميل تكليف للمختار">
-                <select name="tester_id" className={selectCls} defaultValue="">
-                  <option value="">— بدون إسناد الآن —</option>
-                  {testers.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-                </select>
-              </Field>
-              <Field label={`${labelOf("developer")}${star("developer")}`} hint="⚠️ القاعدة: لا يُسنَد المطوّر إلا بعد اختيار التيست أولاً — ثم يُطلق إيميل للمطور وCC لك ولمديره">
-                <select name="developer_id" className={selectCls} defaultValue="">
-                  <option value="">— بدون إسناد الآن —</option>
-                  {devs.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
-                </select>
-              </Field>
-            </>
+            <Field label={`${labelOf("developer")}${star("developer")}`} hint="اختياري في الطلب العادي؛ لا يُسنَد المطور إلا بعد اختيار التيستر">
+              <select name="developer_id" className={selectCls} defaultValue="">
+                <option value="">— يحدده التيستر لاحقاً —</option>
+                {devs.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+              </select>
+            </Field>
           )}
           {settings.custom_fields.filter((f) => f.internal).length > 0 && (
             <div className="space-y-4 rounded-xl border border-dashed border-blue-200 bg-blue-50/40 p-4">

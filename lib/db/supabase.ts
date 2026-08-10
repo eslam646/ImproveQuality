@@ -168,7 +168,18 @@ export async function createSupabaseRepo(): Promise<Repo> {
         const code = i === 0 ? input.code : genTicketCode();
         const row = {
           id: genId("tk"), code, client_name: input.client_name, client_contact: input.client_contact,
-          details: input.details, created_by: input.created_by, created_by_name: input.created_by_name,
+          title: input.title ?? null, details: input.details,
+          request_type: input.request_type ?? "issue",
+          ticket_kind: input.ticket_kind ?? (input.is_urgent ? "instant_support" : "standard"),
+          priority: input.priority ?? (input.is_urgent ? "critical" : "normal"),
+          overall_status: input.tester_id ? "awaiting_tester" : "new",
+          tester_assignment_status: input.tester_id ? "pending" : "unassigned",
+          developer_assignment_status: input.developer_id ? "pending" : "unassigned",
+          linked_ticket_id: input.linked_ticket_id ?? null,
+          urgent_reason: input.urgent_reason ?? null,
+          affected_service: input.affected_service ?? null,
+          urgent_requested_at: input.is_urgent ? t : null,
+          created_by: input.created_by, created_by_name: input.created_by_name,
           developer_id: input.developer_id, developer_name: input.developer_name,
           dev_status: "new", source: input.source, last_status_change: t, created_at: t, updated_at: t,
           custom_data: input.custom_data ?? {},
@@ -190,9 +201,12 @@ export async function createSupabaseRepo(): Promise<Repo> {
     },
     async ticketList(f: TicketFilter) {
       let q = sb.from("tickets").select("*", { count: "exact" });
-      if (f.q) q = q.or(`code.ilike.%${f.q}%,client_name.ilike.%${f.q}%`);
+      if (f.q) q = q.or(`code.ilike.%${f.q}%,client_name.ilike.%${f.q}%,title.ilike.%${f.q}%`);
       if (f.status) q = q.eq("dev_status", f.status);
       if (f.developer_id) q = q.eq("developer_id", f.developer_id);
+      if (f.tester_id) q = q.eq("tester_id", f.tester_id);
+      if (f.request_type) q = q.eq("request_type", f.request_type);
+      if (f.ticket_kind) q = q.eq("ticket_kind", f.ticket_kind);
       if (f.source) q = q.eq("source", f.source);
       if (f.involvesStaffId) {
         // يخصّني: منشئ/مطور/مختبِر — أو تذكرة جديدة لم تُسند بعد (تظهر لمدخل البيانات لتوجيهها)

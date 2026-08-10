@@ -2,6 +2,7 @@
 import type {
   AutomationRule, Attachment, Client, Condition, DevStatus, EmailLog, EmailTemplate,
   Job, Notification, Settings, Staff, Ticket, TicketEvent, Action, TemplateBlocks,
+  RequestType, TicketKind, TicketPriority,
 } from "../types";
 
 export interface TicketFilter {
@@ -9,6 +10,9 @@ export interface TicketFilter {
   q?: string;
   status?: DevStatus | "";
   developer_id?: string;
+  tester_id?: string;
+  request_type?: RequestType | "";
+  ticket_kind?: TicketKind | "";
   source?: string;
   page?: number;
   pageSize?: number;
@@ -34,7 +38,9 @@ export interface Repo {
   clientDelete(id: string): Promise<void>;
 
   ticketCreate(input: {
-    client_name: string; client_contact: string | null; details: string;
+    client_name: string; client_contact: string | null; title?: string | null; details: string;
+    request_type?: RequestType; ticket_kind?: TicketKind; priority?: TicketPriority;
+    linked_ticket_id?: string | null; urgent_reason?: string | null; affected_service?: string | null;
     created_by: string | null; created_by_name: string;
     developer_id: string | null; developer_name: string | null;
     source: Ticket["source"]; code: string;

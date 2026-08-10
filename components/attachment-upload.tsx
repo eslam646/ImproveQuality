@@ -26,7 +26,10 @@ export function AttachmentUpload({ code }: { code: string }) {
         if (res.ok) { input.value = ""; router.refresh(); }
       }}
     >
-      <input type="file" name="file" className="text-xs file:ml-2 file:rounded-lg file:border-0 file:bg-slate-200 file:px-3 file:py-1.5 file:text-xs file:font-semibold hover:file:bg-slate-300" />
+      <div>
+        <input type="file" name="file" accept="image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.zip,.txt,.log" className="text-xs file:ml-2 file:rounded-lg file:border-0 file:bg-slate-200 file:px-3 file:py-1.5 file:text-xs file:font-semibold hover:file:bg-slate-300" />
+        <div className="mt-1 text-[10px] text-slate-400">صور، فيديو، PDF، Office، ZIP وLogs — حتى 25MB حاليًا</div>
+      </div>
       <button disabled={busy} className="rounded-lg bg-slate-700 px-3 py-1.5 text-xs font-bold text-white hover:bg-slate-600 disabled:opacity-50">
         {busy ? "…" : "رفع"}
       </button>
