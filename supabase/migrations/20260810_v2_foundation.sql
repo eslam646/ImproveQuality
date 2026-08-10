@@ -200,14 +200,17 @@ create table if not exists meetings (
 );
 
 create table if not exists meeting_participants (
+  id text primary key default gen_random_uuid()::text,
   meeting_id text not null references meetings(id) on delete cascade,
   staff_id text references staff(id) on delete cascade,
   email text,
   response_status text not null default 'pending',
   joined_at timestamptz,
   left_at timestamptz,
-  primary key (meeting_id, staff_id)
+  check (staff_id is not null or email is not null),
+  unique (meeting_id, staff_id)
 );
+create index if not exists idx_meeting_participants_meeting on meeting_participants(meeting_id);
 
 -- 11) سجل تدقيق موحد --------------------------------------------------------
 create table if not exists audit_log (
