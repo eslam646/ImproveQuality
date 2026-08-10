@@ -159,7 +159,11 @@ export default async function DashboardPage({
         )}
       </form>
 
-      <TicketsTable rows={rows} readOnlyNote={manage ? undefined : actor.role === "developer" ? "🔒 وضع القراءة فقط — بيانات الحسّاسة محمية، والتحديث عبر كود الطلب في نموذج التحديث." : undefined} />
+      <TicketsTable
+        rows={rows}
+        storageKey={`support-hub-columns-${actor.id}`}
+        readOnlyNote={manage ? undefined : actor.role === "developer" ? "🔒 وضع القراءة فقط — بيانات الحسّاسة محمية، والتحديث عبر كود الطلب في نموذج التحديث." : undefined}
+      />
 
       {/* ترقيم الصفحات */}
       {totalPages > 1 && (

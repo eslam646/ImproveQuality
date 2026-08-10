@@ -174,7 +174,7 @@ export async function updateSettingsAction(input: {
 
 // ====== سجل البريد: إعادة إرسال ======
 export async function resendEmailAction(logId: string) {
-  await requireStaff(["admin"]);
+  const actor = await requireStaff(["admin"]);
   const repo = await getRepo();
   const { rows } = await repo.emailLogList(1, 1000);
   const log = rows.find((r) => r.id === logId);
@@ -184,6 +184,38 @@ export async function resendEmailAction(logId: string) {
   const cc = (log.cc_addr ?? "").split(",").map((s) => s.trim()).filter(isEmail);
   const result = await sendMail({ to, cc, subject: log.subject, html: log.body_html }, settings);
   await repo.emailLogSetProvider(log.id, result.provider, result.msgId, result.error ? "failed" : result.provider === "log" ? "logged" : "sent", result.error ?? null);
+  await repo.auditAdd({
+    entity_type: "email", entity_id: log.id, action: "email.resent_original",
+    actor_staff_id: actor.id, actor_label: actor.name,
+    new_values: { to, cc, result: result.error ? "failed" : "sent" },
+  });
+  revalidatePath("/emails");
+  return { ok: !result.error, error: result.error };
+}
+
+export async function resendEmailToRecipientsAction(logId: string, recipients: string[], ccRecipients: string[] = []) {
+  const actor = await requireStaff(["admin"]);
+  const to = [...new Set(recipients.map((e) => e.trim().toLowerCase()).filter(isEmail))].slice(0, 20);
+  const cc = [...new Set(ccRecipients.map((e) => e.trim().toLowerCase()).filter(isEmail))]
+    .filter((e) => !to.includes(e)).slice(0, 20);
+  if (!to.length) return { ok: false, error: "اختر مستلمًا واحدًا على الأقل" };
+  const repo = await getRepo();
+  const { rows } = await repo.emailLogList(1, 1000);
+  const original = rows.find((r) => r.id === logId);
+  if (!original) return { ok: false, error: "الرسالة الأصلية غير موجودة" };
+  const settings = await repo.settingsGet();
+  const subject = `إعادة إرسال: ${original.subject}`;
+  const result = await sendMail({ to, cc, subject, html: original.body_html }, settings);
+  const newLog = await repo.emailLogAdd({
+    job_id: null, ticket_id: original.ticket_id, to_addr: to.join(","), cc_addr: cc.join(",") || null,
+    provider: result.provider, provider_msg_id: result.msgId, subject, body_html: original.body_html,
+    status: result.error ? "failed" : result.provider === "log" ? "logged" : "sent", error: result.error ?? null,
+  });
+  await repo.auditAdd({
+    entity_type: "email", entity_id: newLog.id, action: "email.forwarded_to_selected_recipients",
+    actor_staff_id: actor.id, actor_label: actor.name,
+    old_values: { original_email_id: original.id }, new_values: { to, cc, result: result.error ? "failed" : "sent" },
+  });
   revalidatePath("/emails");
   return { ok: !result.error, error: result.error };
 }

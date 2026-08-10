@@ -2,7 +2,9 @@ import { requirePerm, requireStaff } from "@/lib/auth";
 import { getRepo } from "@/lib/db";
 import { Badge, Card, EmptyState } from "@/components/ui";
 import { ResendButton } from "@/components/resend-button";
+import { ForwardEmailButton } from "@/components/forward-email-button";
 import { fmtDate } from "@/lib/util";
+import { ROLE_LABELS } from "@/lib/labels";
 
 export const dynamic = "force-dynamic";
 
@@ -23,7 +25,8 @@ export default async function EmailsPage({
   const sp = await searchParams;
   const page = Math.max(1, parseInt(sp.page ?? "1", 10) || 1);
   const repo = await getRepo();
-  const { rows, total } = await repo.emailLogList(page, 20);
+  const [{ rows, total }, staffRows] = await Promise.all([repo.emailLogList(page, 20), repo.staffList(true)]);
+  const staff = staffRows.map((s) => ({ id: s.id, name: s.name, email: s.email, roleLabel: ROLE_LABELS[s.role] }));
   const pages = Math.max(1, Math.ceil(total / 20));
 
   return (
@@ -51,6 +54,7 @@ export default async function EmailsPage({
                 <div className="flex items-center gap-2">
                   <Badge color={STATUS_BADGE[m.status]?.c ?? "bg-slate-100"}>{STATUS_BADGE[m.status]?.l ?? m.status}</Badge>
                   <ResendButton id={m.id} />
+                  <ForwardEmailButton id={m.id} staff={staff} />
                 </div>
               </div>
               <details className="mt-3">
