@@ -4,6 +4,7 @@ import path from "path";
 import { getRepo } from "@/lib/db";
 import { currentStaff, permissionsForStaff } from "@/lib/auth";
 import { genId } from "@/lib/util";
+import { uploadSupabaseAttachment } from "@/lib/storage";
 
 const MAX_MB = Math.max(4, Math.min(100, Number(process.env.MAX_ATTACHMENT_MB || 50)));
 const MAX_BYTES = MAX_MB * 1024 * 1024; // مؤقتاً عبر التطبيق؛ V2 سينقل الفيديو الكبير إلى R2 Direct Upload
@@ -41,21 +42,17 @@ export async function POST(req: Request) {
     const sbUrl = process.env.SUPABASE_URL!;
     const sbKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
     const relPath = `${ticket.code}/${fname}`;
-    const up = await fetch(`${sbUrl}/storage/v1/object/attachments/${relPath}`, {
-      method: "POST",
-      headers: {
-        authorization: `Bearer ${sbKey}`,
-        "x-upsert": "true",
-        "content-type": file.type || "application/octet-stream",
-      },
-      body: await file.arrayBuffer(),
-    });
-    if (!up.ok) {
-      const t = await up.text();
-      return NextResponse.json({ error: `فشل رفع المرفق للتخزين: ${t.slice(0, 160)}` }, { status: 502 });
+    try {
+      const uploaded = await uploadSupabaseAttachment({
+        url: sbUrl, key: sbKey, relPath,
+        data: await file.arrayBuffer(), contentType: file.type || "application/octet-stream",
+      });
+      storedPath = uploaded.publicUrl;
+      driver = "supabase";
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      return NextResponse.json({ error: `تعذر تجهيز/رفع المرفق: ${message}` }, { status: 502 });
     }
-    storedPath = `${sbUrl}/storage/v1/object/public/attachments/${relPath}`;
-    driver = "supabase";
   } else {
     // محلي: القرص
     const absDir = path.join(process.cwd(), "data", "uploads", ticket.code);

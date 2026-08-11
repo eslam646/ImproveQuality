@@ -3,6 +3,7 @@ import fs from "fs/promises";
 import path from "path";
 import { getRepo } from "@/lib/db";
 import { clientIp, rateLimit } from "@/lib/ratelimit";
+import { uploadSupabaseAttachment } from "@/lib/storage";
 
 const MAX_MB = Math.max(4, Math.min(100, Number(process.env.MAX_ATTACHMENT_MB || 50)));
 const MAX_BYTES = MAX_MB * 1024 * 1024;
@@ -39,20 +40,16 @@ export async function POST(req: Request) {
     const sbUrl = process.env.SUPABASE_URL!;
     const sbKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
     const relPath = `cf/${fname}`;
-    const up = await fetch(`${sbUrl}/storage/v1/object/attachments/${relPath}`, {
-      method: "POST",
-      headers: {
-        authorization: `Bearer ${sbKey}`,
-        "x-upsert": "true",
-        "content-type": file.type || "application/octet-stream",
-      },
-      body: await file.arrayBuffer(),
-    });
-    if (!up.ok) {
-      const t = await up.text();
-      return NextResponse.json({ error: `فشل رفع الملف للتخزين: ${t.slice(0, 120)}` }, { status: 502 });
+    try {
+      const uploaded = await uploadSupabaseAttachment({
+        url: sbUrl, key: sbKey, relPath,
+        data: await file.arrayBuffer(), contentType: file.type || "application/octet-stream",
+      });
+      return NextResponse.json({ ok: true, url: uploaded.publicUrl, name: file.name });
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      return NextResponse.json({ error: `تعذر تجهيز/رفع الملف: ${message}` }, { status: 502 });
     }
-    return NextResponse.json({ ok: true, url: `${sbUrl}/storage/v1/object/public/attachments/${relPath}`, name: file.name });
   }
 
   // محلي: القرص (بيئة التطوير فقط — الرابط رمزي للعرض)
