@@ -41,7 +41,12 @@ export async function previewTemplateAction(subject: string, body: string, block
     source: "internal" as const, last_status_change: new Date().toISOString(),
     created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
   };
-  const vars = templateVars(t, settings, { old_status: "new", note: "ملاحظة تجريبية" });
+  const vars = {
+    ...templateVars(t, settings, { old_status: "new", note: "ملاحظة تجريبية" }),
+    actor_name: "كريم فؤاد",
+    actor_role: "فريق الاختبار",
+    reason: "غير متاح حاليًا بسبب تدخل طارئ آخر",
+  };
   const renderedSubject = renderTemplate(subject, vars, { htmlEscape: false });
   const intro = renderTemplate(body, vars);
   const bodyInner = renderBlocks(vars, blocks ?? DEFAULT_TEMPLATE_BLOCKS, intro);

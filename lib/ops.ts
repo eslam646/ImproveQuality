@@ -398,17 +398,29 @@ export async function declineAssignmentOp(
   const creatorStaff = updated.created_by ? await repo.staffGet(updated.created_by) : null;
   const creatorEmail = creatorStaff?.email && creatorStaff.email.includes("@") ? creatorStaff.email
     : (!creatorStaff && isEmail(updated.client_contact ?? "") ? updated.client_contact : null);
+  const settings = await repo.settingsGet();
+  const tmpl = await repo.templateGet("tmpl-urgent-withdrawal");
+  const vars = {
+    ...templateVars(updated, settings),
+    actor_name: actor.name,
+    actor_role: ROLE_LABELS[actor.role],
+    reason,
+  };
+  const subject = tmpl
+    ? renderTemplate(tmpl.subject, vars, { htmlEscape: false })
+    : `🙅 اعتذار عن ${isTester ? "اختبار" : "تطوير"} الطلب ${t.code} — ${actor.name}`;
+  const bodyHtml = tmpl
+    ? renderBlocks(vars, { ...DEFAULT_TEMPLATE_BLOCKS, ...(tmpl.blocks ?? {}) }, renderTemplate(tmpl.body_html, vars))
+    : `<p><b>${esc(actorLabel)}</b> اعتذر عن مهمة <b dir="ltr">${esc(t.code)}</b> (دعم فوري 🚨)</p>
+       <p><b>السبب:</b> ${esc(reason)}</p><p><b>العميل:</b> ${esc(t.client_name)}</p>`;
   await mailParties({
     ticket: updated,
     to: creatorEmail ? ["creator"] : [],
     extraTo: creatorEmail ? adminEmails : [],
     forceTo: creatorEmail ? undefined : adminEmails.slice(0, 5),
     excludeStaffId: actor.staff_id,
-    subject: `🙅 اعتذار عن ${isTester ? "اختبار" : "تطوير"} الطلب ${t.code} — ${actor.name}`,
-    bodyHtml: `<p><b>${esc(actorLabel)}</b> اعتذر عن مهمة <b dir="ltr">${esc(t.code)}</b>${t.is_urgent ? " (دعم فوري 🚨)" : ""}</p>
-      <p><b>السبب:</b> ${esc(reason)}</p>
-      <p><b>العميل:</b> ${esc(t.client_name)}</p>
-      <p style="color:#64748b">المهمة عادت لقائمة غير المُسندة — أعد إسنادها من صفحة الطلب.</p>`,
+    subject,
+    bodyHtml,
     notifyTo: ["creator"],
     notifyMessage: `🙅 ${actor.name} اعتذر عن ${t.code}: ${reason.slice(0, 80)}`,
   });

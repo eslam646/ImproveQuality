@@ -43,6 +43,13 @@ export const SEED_TICKETS: Omit<Ticket, "seq">[] = [
 
 export const SEED_TEMPLATES: EmailTemplate[] = [
   {
+    id: "tmpl-urgent-withdrawal", name: "اعتذار عن الدعم الفوري",
+    subject: "🙅 اعتذار {{actor_role}} عن الدعم الفوري {{code}} — {{actor_name}}",
+    body_html: `<b>{{actor_name}}</b> ({{actor_role}}) اعتذر عن الاستمرار في الدعم الفوري.<br><b>سبب الاعتذار:</b> {{reason}}<br>عادت المهمة لانتظار إعادة الإسناد.`,
+    blocks: { ...DEFAULT_TEMPLATE_BLOCKS, status: true, note: false, update_button: false },
+    created_at: nowIso(), updated_at: nowIso(),
+  },
+  {
     id: "tmpl-tester-assigned", name: "تكليف التيستر بطلب",
     subject: "🧪 أُسند إليك اختبار الطلب {{code}} — {{ticket.title}}",
     body_html: `مرحباً {{ticket.tester_name}}، تم إسناد الطلب التالي إليك للمراجعة والاختبار. وافق على التكليف أو ارفضه بسبب واضح من صفحة الطلب.`,
