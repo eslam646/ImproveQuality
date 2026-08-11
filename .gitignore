@@ -2,6 +2,7 @@ node_modules
 .next
 .open-next
 .wrangler
+.vs/
 out
 .env
 .env.local
