@@ -25,7 +25,7 @@ export default async function TemplateEditorPage({
         initialName={template?.name ?? ""}
         initialSubject={template?.subject ?? ""}
         initialBody={template?.body_html ?? ""}
-        initialBlocks={template?.blocks ?? DEFAULT_TEMPLATE_BLOCKS}
+        initialBlocks={{ ...DEFAULT_TEMPLATE_BLOCKS, ...(template?.blocks ?? {}) }}
       />
     </div>
   );

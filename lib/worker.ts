@@ -69,7 +69,7 @@ async function executeJob(job: Job, settings: Settings): Promise<void> {
     const subject = renderTemplate(tmpl.subject, vars, { htmlEscape: false });
     const intro = renderTemplate(tmpl.body_html, vars);
     // القالب له أقسام مرئية يتحكم بها الأدمن — الافتراضي عند عدم التخصيص
-    const bodyInner = renderBlocks(vars, tmpl.blocks ?? DEFAULT_TEMPLATE_BLOCKS, intro);
+    const bodyInner = renderBlocks(vars, { ...DEFAULT_TEMPLATE_BLOCKS, ...(tmpl.blocks ?? {}) }, intro);
     const html = wrapEmail(subject, bodyInner, settings);
 
     const log = await repo.emailLogAdd({

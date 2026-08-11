@@ -1,15 +1,22 @@
 import { escapeHtml } from "./util";
 import type { Settings, TemplateBlocks, Ticket } from "./types";
-import { STATUS_LABELS } from "./labels";
+import { REQUEST_TYPE_LABELS, STATUS_LABELS, TICKET_KIND_LABELS } from "./labels";
 import type { DevStatus } from "./types";
 
 export const BLOCK_LABELS: Record<keyof TemplateBlocks, string> = {
   status: "شارة الحالة الحالية (مع الحالة السابقة)",
-  client: "بيانات العميل",
+  client: "اسم العميل",
+  title: "عنوان الطلب / المشكلة",
+  request_type: "نوع الطلب",
+  priority: "الأولوية ونوع التذكرة",
+  creator: "مدخل البيانات (مقدم الطلب)",
+  tester: "التيستر المسند",
   developer: "المطور المسند",
-  details: "تفاصيل الطلب",
+  estimation: "التقدير الزمني",
+  affected_service: "السيرفر / الخدمة المتأثرة",
+  details: "تفاصيل الطلب والخطوات",
   note: "آخر ملاحظة",
-  track_button: "زر «تتبع حالة الطلب»",
+  track_button: "زر «عرض الطلب»",
   update_button: "زر «تحديث الحالة»",
 };
 
@@ -32,16 +39,37 @@ export function templateVars(
   extra?: { old_status?: string | null; note?: string | null },
 ): Record<string, string> {
   const base = settings.base_url.replace(/\/$/, "");
+  const priorityLabels: Record<string, string> = { low: "منخفضة", normal: "عادية", high: "مرتفعة", critical: "حرجة" };
+  const estimation = ticket.est_days || ticket.est_hours
+    ? `${ticket.est_days ? `${ticket.est_days} يوم` : ""}${ticket.est_days && ticket.est_hours ? " + " : ""}${ticket.est_hours ? `${ticket.est_hours} ساعة` : ""}`
+    : "غير محدد";
+  const requestType = REQUEST_TYPE_LABELS[ticket.request_type ?? "issue"];
+  const ticketKind = TICKET_KIND_LABELS[ticket.ticket_kind ?? (ticket.is_urgent ? "instant_support" : "standard")];
+  const priority = priorityLabels[ticket.priority ?? (ticket.is_urgent ? "critical" : "normal")];
   return {
     "ticket.code": ticket.code,
     "ticket.client_name": ticket.client_name,
+    "ticket.title": ticket.title ?? "بدون عنوان",
+    "ticket.request_type": requestType,
+    "ticket.ticket_kind": ticketKind,
+    "ticket.priority": priority,
     "ticket.details": ticket.details,
+    "ticket.tester_name": ticket.tester_name ?? "غير محدد",
     "ticket.developer_name": ticket.developer_name ?? "غير محدد",
     "ticket.created_by_name": ticket.created_by_name,
+    "ticket.estimation": estimation,
+    "ticket.affected_service": ticket.affected_service ?? "غير محدد",
     code: ticket.code,
     client_name: ticket.client_name,
+    title: ticket.title ?? "بدون عنوان",
+    request_type: requestType,
+    ticket_kind: ticketKind,
+    priority,
+    tester_name: ticket.tester_name ?? "غير محدد",
     developer_name: ticket.developer_name ?? "غير محدد",
     created_by_name: ticket.created_by_name,
+    estimation,
+    affected_service: ticket.affected_service ?? "غير محدد",
     status: ticket.dev_status,
     status_label: STATUS_LABELS[ticket.dev_status as DevStatus] ?? ticket.dev_status,
     old_status_label: extra?.old_status
@@ -74,7 +102,15 @@ export function renderBlocks(
     );
   }
   if (blocks.client) info += row("العميل", esc(vars.client_name));
+  if (blocks.title) info += row("عنوان الطلب", esc(vars.title));
+  if (blocks.request_type) info += row("نوع الطلب", esc(vars.request_type));
+  if (blocks.priority) info += row("التصنيف / الأولوية", `${esc(vars.ticket_kind)} — ${esc(vars.priority)}`);
+  if (blocks.creator) info += row("مدخل البيانات", esc(vars.created_by_name));
+  if (blocks.tester) info += row("التيستر المسند", esc(vars.tester_name));
   if (blocks.developer) info += row("المطور المسند", esc(vars.developer_name));
+  if (blocks.estimation) info += row("التقدير الزمني", esc(vars.estimation));
+  if (blocks.affected_service && vars.affected_service && vars.affected_service !== "غير محدد")
+    info += row("الخدمة المتأثرة", esc(vars.affected_service));
 
   let html = "";
   if (introHtml.trim()) html += `<p style="margin:0 0 14px">${introHtml}</p>`;
@@ -94,7 +130,7 @@ export function renderBlocks(
   const btn = (href: string, label: string, bg: string) =>
     `<a href="${esc(href)}" style="display:inline-block;background:${bg};color:#ffffff;text-decoration:none;border-radius:10px;padding:10px 18px;font-size:14px;font-weight:700;margin:4px 0 0 8px">${label}</a>`;
   let buttons = "";
-  if (blocks.track_button) buttons += btn(vars.track_url, "🔍 تتبع حالة الطلب", "#1d4ed8");
+  if (blocks.track_button) buttons += btn(vars.track_url, "🔍 عرض الطلب", "#1d4ed8");
   if (blocks.update_button) buttons += btn(vars.update_url, "✏️ تحديث حالة الطلب", "#0f766e");
   if (buttons) html += `<div style="margin-top:18px">${buttons}</div>`;
 

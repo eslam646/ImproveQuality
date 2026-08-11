@@ -1,4 +1,5 @@
 import type { AutomationRule, EmailTemplate, Staff, Ticket } from "./types";
+import { DEFAULT_TEMPLATE_BLOCKS } from "./types";
 import { nowIso } from "./util";
 
 const t0 = Date.now();
@@ -45,28 +46,28 @@ export const SEED_TEMPLATES: EmailTemplate[] = [
     id: "tmpl-created", name: "إشعار طلب جديد",
     subject: "طلب جديد {{code}} — {{client_name}}",
     body_html: `تم فتح طلب جديد 🆕 أدخله <b>{{created_by_name}}</b>.`,
-    blocks: { status: false, client: true, developer: true, details: true, note: false, track_button: true, update_button: false },
+    blocks: { ...DEFAULT_TEMPLATE_BLOCKS, status: false, note: false, update_button: false },
     created_at: nowIso(), updated_at: nowIso(),
   },
   {
     id: "tmpl-assigned", name: "تعيين مطور على تذكرة",
     subject: "أُسندت إليك التذكرة {{code}} — {{client_name}}",
     body_html: `مرحباً {{developer_name}} 👋 تم إسناد التذكرة التالية إليك. لتحديث حالة التطوير استخدم زر «تحديث حالة الطلب» بالأسفل.`,
-    blocks: { status: true, client: true, developer: true, details: true, note: false, track_button: false, update_button: true },
+    blocks: { ...DEFAULT_TEMPLATE_BLOCKS, note: false, track_button: false, update_button: true },
     created_at: nowIso(), updated_at: nowIso(),
   },
   {
     id: "tmpl-status", name: "تحديث حالة التطوير",
     subject: "تحديث حالة {{code}}: {{status_label}}",
     body_html: `تم تحديث حالة الطلب <b>{{code}}</b>.`,
-    blocks: { status: true, client: true, developer: true, details: false, note: true, track_button: true, update_button: false },
+    blocks: { ...DEFAULT_TEMPLATE_BLOCKS, details: false, note: true, update_button: false },
     created_at: nowIso(), updated_at: nowIso(),
   },
   {
     id: "tmpl-reminder", name: "تذكير بتذكرة متوقفة",
     subject: "⏰ تذكير: التذكرة {{code}} بلا تحديث منذ فترة",
     body_html: `التذكرة التالية لم تُحدَّث ضمن المهلة المحددة — برجاء المتابعة.`,
-    blocks: { status: true, client: true, developer: true, details: false, note: false, track_button: true, update_button: true },
+    blocks: { ...DEFAULT_TEMPLATE_BLOCKS, details: false, note: false, update_button: true },
     created_at: nowIso(), updated_at: nowIso(),
   },
 ];

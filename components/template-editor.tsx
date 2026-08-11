@@ -6,7 +6,12 @@ import { deleteTemplateAction, previewTemplateAction, upsertTemplateAction } fro
 import { BLOCK_LABELS } from "@/lib/templates";
 import type { TemplateBlocks } from "@/lib/types";
 
-const VARS = ["{{ticket.code}}", "{{ticket.client_name}}", "{{developer_name}}", "{{created_by_name}}", "{{status_label}}", "{{old_status_label}}", "{{note}}", "{{app_name}}"];
+const VARS = [
+  "{{ticket.code}}", "{{ticket.client_name}}", "{{ticket.title}}", "{{ticket.request_type}}",
+  "{{ticket.ticket_kind}}", "{{ticket.priority}}", "{{ticket.created_by_name}}", "{{ticket.tester_name}}",
+  "{{ticket.developer_name}}", "{{ticket.estimation}}", "{{ticket.affected_service}}", "{{status_label}}",
+  "{{old_status_label}}", "{{note}}", "{{track_url}}", "{{app_name}}",
+];
 
 export function TemplateEditor({ id, initialName, initialSubject, initialBody, initialBlocks }: {
   id: string | null; initialName: string; initialSubject: string; initialBody: string;

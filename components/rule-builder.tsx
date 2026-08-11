@@ -7,11 +7,15 @@ import type { Action, AutomationRule, Condition, Recipient, Role, TriggerType } 
 import { ALL_STATUSES, ROLE_LABELS, STATUS_LABELS } from "@/lib/labels";
 
 const REF_OPTIONS = [
-  { v: "developer", l: "المطور المعيّن" },
-  { v: "creator", l: "مدخّل البيانات" },
+  { v: "creator", l: "مدخل البيانات (مقدم الطلب)" },
+  { v: "tester", l: "التيستر المعيّن (ديناميكي)" },
+  { v: "developer", l: "المطور المعيّن (ديناميكي)" },
+  { v: "ticket_parties", l: "كل المسؤولين عن الطلب" },
+  { v: "creator_manager", l: "مدير مدخل البيانات" },
+  { v: "tester_manager", l: "مدير التيستر" },
   { v: "developer_manager", l: "مدير المطور" },
-  { v: "creator_manager", l: "مدير المدخّل" },
-  { v: "client", l: "العميل (لو له إيميل)" },
+  { v: "ticket_managers", l: "مديرو كل أطراف الطلب" },
+  { v: "client", l: "بريد مقدم الطلب المسجل بالتذكرة" },
 ] as const;
 
 type RecState = { refs: string[]; roles: string[]; staff: string[]; emails: string };
@@ -150,8 +154,14 @@ export function RuleBuilder({ initial, templates, staff }: {
         {trigger === "field.changed" && (
           <div className="mt-3 flex items-center gap-2 text-sm">
             <span>الحقل:</span>
-            <select className={inputCls} value={triggerField} onChange={(e) => setTriggerField(e.target.value)} style={{ maxWidth: 220 }}>
+            <select className={inputCls} value={triggerField} onChange={(e) => setTriggerField(e.target.value)} style={{ maxWidth: 260 }}>
               <option value="dev_status">حالة التطوير</option>
+              <option value="overall_status">الحالة العامة</option>
+              <option value="tester_assignment_status">قرار / حالة التيستر</option>
+              <option value="developer_assignment_status">قرار / حالة المطور</option>
+              <option value="tester_id">التيستر المعيّن</option>
+              <option value="developer_id">المطور المعيّن</option>
+              <option value="priority">الأولوية</option>
             </select>
           </div>
         )}
@@ -171,6 +181,15 @@ export function RuleBuilder({ initial, templates, staff }: {
               <select className={inputCls} style={{ maxWidth: 180 }} value={c.field}
                 onChange={(e) => setConditions(conditions.map((x, j) => (j === i ? { ...x, field: e.target.value } : x)))}>
                 <option value="dev_status">حالة التطوير</option>
+                <option value="overall_status">الحالة العامة</option>
+                <option value="request_type">نوع الطلب</option>
+                <option value="ticket_kind">عادي / دعم فوري</option>
+                <option value="priority">الأولوية</option>
+                <option value="tester_assignment_status">حالة تكليف التيستر</option>
+                <option value="developer_assignment_status">حالة تكليف المطور</option>
+                <option value="tester_id">التيستر المعيّن</option>
+                <option value="developer_id">المطور المعيّن</option>
+                <option value="created_by">مدخل البيانات</option>
                 <option value="source">مصدر الطلب</option>
               </select>
               <select className={inputCls} style={{ maxWidth: 120 }} value={c.op}
@@ -204,7 +223,8 @@ export function RuleBuilder({ initial, templates, staff }: {
         <div className="space-y-4">
           {actions.map((a, i) => (
             <div key={i} className="space-y-3 rounded-xl border border-slate-200 p-4">
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between gap-2">
+                <span className="shrink-0 rounded-full bg-slate-100 px-2 py-1 text-[11px] font-bold text-slate-500">الإجراء {i + 1} من {actions.length}</span>
                 <select className={inputCls} style={{ maxWidth: 240 }} value={a.type}
                   onChange={(e) => {
                     const t = e.target.value;

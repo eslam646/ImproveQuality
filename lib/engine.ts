@@ -50,14 +50,28 @@ export async function resolveRecipients(
       staffOut.push(...all.filter((s) => s.role === r.role));
       continue;
     }
-    // refs
+    // refs الديناميكية المرتبطة بالتذكرة الحالية
     const creator = ticket.created_by ? await getStaff(ticket.created_by) : null;
+    const tester = ticket.tester_id ? await getStaff(ticket.tester_id) : null;
     const developer = ticket.developer_id ? await getStaff(ticket.developer_id) : null;
+    if (r.ref === "ticket_parties") {
+      [creator, tester, developer].forEach((s) => { if (s?.active) staffOut.push(s); });
+      continue;
+    }
+    if (r.ref === "ticket_managers") {
+      for (const person of [creator, tester, developer]) {
+        const manager = await managerOf(person);
+        if (manager?.active) staffOut.push(manager);
+      }
+      continue;
+    }
     let target: Staff | null = null;
     switch (r.ref) {
       case "developer": target = developer; break;
+      case "tester": target = tester; break;
       case "creator": target = creator; break;
       case "developer_manager": target = await managerOf(developer); break;
+      case "tester_manager": target = await managerOf(tester); break;
       case "creator_manager": target = await managerOf(creator); break;
       case "client":
         if (ticket.client_contact && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(ticket.client_contact.trim()))

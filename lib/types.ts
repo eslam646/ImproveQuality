@@ -148,7 +148,10 @@ export interface Condition {
 }
 
 export type Recipient =
-  | { kind: "ref"; ref: "developer" | "creator" | "developer_manager" | "creator_manager" | "client" }
+  | { kind: "ref"; ref:
+      | "developer" | "tester" | "creator"
+      | "developer_manager" | "tester_manager" | "creator_manager"
+      | "ticket_parties" | "ticket_managers" | "client" }
   | { kind: "staff"; staff_id: string }
   | { kind: "role"; role: Role }
   | { kind: "email"; email: string };
@@ -288,19 +291,33 @@ export interface Client {
 
 // أقسام قالب البريد القابلة للتفعيل/التعطيل من قبل الأدمن
 export interface TemplateBlocks {
-  status: boolean;         // شارة الحالة الحالية
-  client: boolean;         // بيانات العميل
-  developer: boolean;      // المطور المسند
-  details: boolean;        // تفاصيل الطلب
-  note: boolean;           // آخر ملاحظة/تعليق
-  track_button: boolean;   // زر تتبع الطلب
-  update_button: boolean;  // زر تحديث الحالة
+  status: boolean;           // شارة الحالة الحالية
+  client: boolean;           // اسم العميل
+  title: boolean;            // عنوان الطلب
+  request_type: boolean;     // نوع الطلب
+  priority: boolean;         // الأولوية / دعم فوري
+  creator: boolean;          // مدخل البيانات
+  tester: boolean;           // التيستر المسند
+  developer: boolean;        // المطور المسند
+  estimation: boolean;       // التقدير الزمني
+  affected_service: boolean; // الخدمة المتأثرة في الدعم الفوري
+  details: boolean;          // تفاصيل الطلب
+  note: boolean;             // آخر ملاحظة/تعليق
+  track_button: boolean;     // زر عرض الطلب
+  update_button: boolean;    // زر تحديث الحالة
 }
 
 export const DEFAULT_TEMPLATE_BLOCKS: TemplateBlocks = {
   status: true,
   client: true,
+  title: true,
+  request_type: true,
+  priority: true,
+  creator: true,
+  tester: true,
   developer: true,
+  estimation: true,
+  affected_service: true,
   details: true,
   note: true,
   track_button: true,

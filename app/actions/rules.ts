@@ -18,7 +18,15 @@ export async function upsertRuleAction(input: {
   if (!input.name.trim()) return { ok: false, error: "اسم القاعدة مطلوب" };
   if (!input.actions.length) return { ok: false, error: "أضف إجراءً واحداً على الأقل" };
   const repo = await getRepo();
-  await repo.ruleUpsert(input);
+  // حماية من تكرار نفس الإجراء بالخطأ عند الضغط أو التعديل أكثر من مرة
+  const seen = new Set<string>();
+  const actions = input.actions.filter((a) => {
+    const key = JSON.stringify(a);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+  await repo.ruleUpsert({ ...input, actions });
   revalidatePath("/automation");
   return { ok: true };
 }
