@@ -365,12 +365,20 @@ export interface CustomFieldCfg {
 
 // ===== تحكم صفحة الاستعلام العامة =====
 export interface TrackPageCfg {
-  show_estimation: boolean;   // تقدير وقت التنفيذ (أيام/ساعات)
-  show_timeline: boolean;     // مسار الحالة
-  show_last_change: boolean;  // تاريخ آخر تحديث
-  show_client: boolean;       // اسم العميل
-  show_developer: boolean;    // اسم المطور المسند
-  show_custom: boolean;       // الحقول المخصصة لمقدم الطلب
+  show_estimation: boolean;
+  show_timeline: boolean;
+  show_last_change: boolean;
+  show_client: boolean;
+  show_title: boolean;
+  show_request_type: boolean;
+  show_ticket_kind: boolean;
+  show_priority: boolean;
+  show_creator: boolean;
+  show_tester: boolean;
+  show_developer: boolean;
+  show_assignment_status: boolean;
+  show_affected_service: boolean;
+  show_custom: boolean;
 }
 
 export const DEFAULT_TRACK_CFG: TrackPageCfg = {
@@ -378,7 +386,15 @@ export const DEFAULT_TRACK_CFG: TrackPageCfg = {
   show_timeline: true,
   show_last_change: true,
   show_client: false,
+  show_title: true,
+  show_request_type: true,
+  show_ticket_kind: true,
+  show_priority: false,
+  show_creator: false,
+  show_tester: false,
   show_developer: false,
+  show_assignment_status: false,
+  show_affected_service: false,
   show_custom: false,
 };
 

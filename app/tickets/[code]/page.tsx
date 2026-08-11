@@ -56,10 +56,8 @@ export default async function TicketDetailsPage({
   if (actor.role === "developer" && ticket.developer_id !== actor.id) {
     redirect("/dashboard?denied=ticket");
   }
-  if (actor.role === "support") {
-    const involved = ticket.created_by === actor.id || ticket.developer_id === actor.id || ticket.tester_id === actor.id;
-    const unassigned = !ticket.tester_id && !ticket.developer_id;
-    if (!involved && !unassigned) redirect("/dashboard?denied=ticket");
+  if (actor.role === "support" && ticket.created_by !== actor.id) {
+    redirect("/dashboard?denied=ticket");
   }
 
   const settings = await repo.settingsGet();
@@ -91,8 +89,9 @@ export default async function TicketDetailsPage({
   const transitions = (actor.role === "tester" || actor.role === "developer") && myAssignmentStatus !== "accepted"
     ? []
     : allowedTransitions(actor.role, ticket.dev_status);
-  const noteLabel = actor.role === "developer" ? "ملاحظات الديف" : actor.role === "tester" ? "ملاحظات التيست" : "ملاحظة";
-  const hasActions = manage || isAssignedTester || isAssignedDev || transitions.length > 0;
+  const noteLabel = actor.role === "developer" ? "ملاحظات الديف" : actor.role === "tester" ? "ملاحظات التيست" : "ملاحظة مدخل البيانات";
+  const isRequester = actor.role === "support" && ticket.created_by === actor.id;
+  const hasActions = manage || isRequester || isAssignedTester || isAssignedDev || transitions.length > 0;
 
   return (
     <div className="mx-auto max-w-5xl space-y-5">

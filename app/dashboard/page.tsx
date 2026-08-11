@@ -18,8 +18,8 @@ export default async function DashboardPage({
   const repo = await getRepo();
   const manage = canManage(actor);
   const perms = await permissionsOf(actor.role);
-  const canNewTicket = manage && (perms.new_ticket ?? false);
-  const canExport = manage && (perms.export_csv ?? false);
+  const canNewTicket = ["admin", "support"].includes(actor.role) && (perms.new_ticket ?? false);
+  const canExport = ["admin", "support"].includes(actor.role) && (perms.export_csv ?? false);
 
   const page = Math.max(1, parseInt(sp.page ?? "1", 10) || 1);
   const q = sp.q ?? "";
@@ -42,8 +42,8 @@ export default async function DashboardPage({
       tester_id: actor.role === "tester" ? actor.id : tester_id || undefined,
       request_type: request_type || undefined,
       ticket_kind: ticket_kind || undefined,
-      // مدخل البيانات يشوف ما يخصّه فقط (أنشأه/مُسند له كمطوّر أو التيست/جديد غير مُسنَد)
-      involvesStaffId: actor.role === "support" ? actor.id : undefined,
+      // مدخل البيانات يشاهد الطلبات التي أنشأها هو فقط — View-only مع ملاحظات
+      created_by: actor.role === "support" ? actor.id : undefined,
       page, pageSize: 15,
     }),
     repo.ticketCounts(),
@@ -162,7 +162,9 @@ export default async function DashboardPage({
       <TicketsTable
         rows={rows}
         storageKey={`support-hub-columns-${actor.id}`}
-        readOnlyNote={manage ? undefined : actor.role === "developer" ? "🔒 وضع القراءة فقط — بيانات الحسّاسة محمية، والتحديث عبر كود الطلب في نموذج التحديث." : undefined}
+        readOnlyNote={manage ? undefined : actor.role === "support"
+          ? "🔒 مدخل البيانات: تذاكرك فقط — قراءة وإضافة ملاحظات، بدون تعديل البيانات أو الحالة أو المرفقات."
+          : actor.role === "developer" ? "🔒 تظهر تذاكرك المسندة فقط — تغييرات الحالة وفق دورة المطور." : undefined}
       />
 
       {/* ترقيم الصفحات */}

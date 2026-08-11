@@ -235,6 +235,7 @@ export async function createSupabaseRepo(): Promise<Repo> {
       if (f.status) q = q.eq("dev_status", f.status);
       if (f.developer_id) q = q.eq("developer_id", f.developer_id);
       if (f.tester_id) q = q.eq("tester_id", f.tester_id);
+      if (f.created_by) q = q.eq("created_by", f.created_by);
       if (f.request_type) q = q.eq("request_type", f.request_type);
       if (f.ticket_kind) q = q.eq("ticket_kind", f.ticket_kind);
       if (f.source) q = q.eq("source", f.source);

@@ -8,9 +8,17 @@ const LABELS: Record<keyof TrackPageCfg, { label: string; hint: string }> = {
   show_estimation: { label: "تقدير وقت التنفيذ", hint: "الأيام/الساعات المقدرة للطلب" },
   show_timeline: { label: "مسار الحالة", hint: "خط زمني بكل تغييرات الحالة" },
   show_last_change: { label: "تاريخ آخر تحديث", hint: "متى تغيّرت الحالة آخر مرة" },
-  show_client: { label: "اسم العميل", hint: "يُعرض في صندوق النتيجة" },
-  show_developer: { label: "اسم المطور المسند", hint: "من يعمل على الطلب حالياً" },
-  show_custom: { label: "الحقول المخصصة", hint: "قيم حقول منشئ الحقول (مثل هاتف العميل)" },
+  show_client: { label: "اسم العميل", hint: "الجهة صاحبة المشروع" },
+  show_title: { label: "عنوان الطلب / المشكلة", hint: "العنوان المختصر للتذكرة" },
+  show_request_type: { label: "نوع الطلب", hint: "تطوير جديد / تعديل سابق / مشكلة" },
+  show_ticket_kind: { label: "عادي أم دعم فوري", hint: "تمييز طلبات التدخل الطارئ" },
+  show_priority: { label: "الأولوية", hint: "عادية / مرتفعة / حرجة" },
+  show_creator: { label: "مدخل البيانات", hint: "صاحب الطلب" },
+  show_tester: { label: "التيستر المسند", hint: "مسؤول مراجعة واختبار الطلب" },
+  show_developer: { label: "المطور المسند", hint: "من يعمل على الطلب حالياً" },
+  show_assignment_status: { label: "حالة قبول التيستر والمطور", hint: "بانتظار الرد / مقبول / مرفوض" },
+  show_affected_service: { label: "الخدمة المتأثرة", hint: "السيرفر أو قاعدة البيانات في الدعم الفوري" },
+  show_custom: { label: "الحقول المخصصة", hint: "قيم الحقول التي أنشأها المدير" },
 };
 
 export function TrackCfgEditor({ initial }: { initial: TrackPageCfg }) {

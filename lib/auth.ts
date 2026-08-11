@@ -95,4 +95,5 @@ export async function requirePerm(key: PermKey): Promise<Staff> {
 }
 
 export const isAdmin = (s: Staff | null) => s?.role === "admin";
-export const canManage = (s: Staff | null) => s?.role === "admin" || s?.role === "support";
+// إدارة/تعديل التذكرة للأدمن فقط. مدخل البيانات View-only ويملك إضافة الملاحظات وإنشاء طلب جديد فقط.
+export const canManage = (s: Staff | null) => s?.role === "admin";

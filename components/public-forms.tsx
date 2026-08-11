@@ -179,7 +179,16 @@ interface TrackResult {
   status_label: string;
   last_status_change?: string;
   client_name?: string;
+  title?: string;
+  request_type_label?: string;
+  ticket_kind_label?: string;
+  priority_label?: string;
+  creator_name?: string;
+  tester_name?: string | null;
   developer_name?: string | null;
+  tester_assignment_status_label?: string;
+  developer_assignment_status_label?: string;
+  affected_service?: string | null;
   estimation?: { days: number | null; hours: number | null };
   custom?: { label: string; value: string; file?: boolean }[];
   timeline?: { status_label: string; at: string }[];
@@ -218,10 +227,19 @@ export function TrackForm({ initialCode }: { initialCode: string }) {
             <span className="font-mono font-bold" dir="ltr">{res.code}</span>
             <span className="rounded-full bg-blue-100 px-3 py-1 text-sm font-bold text-blue-800">{res.status_label}</span>
           </div>
-          {(res.client_name || res.developer_name || res.last_status_change || res.estimation) && (
+          {(res.client_name || res.title || res.request_type_label || res.ticket_kind_label || res.creator_name || res.tester_name || res.developer_name || res.last_status_change || res.estimation) && (
             <div className="space-y-1 rounded-lg border border-slate-100 bg-white p-4 text-sm">
               {res.client_name && <p><span className="font-bold text-slate-500">العميل: </span>{res.client_name}</p>}
+              {res.title && <p><span className="font-bold text-slate-500">العنوان: </span>{res.title}</p>}
+              {res.request_type_label && <p><span className="font-bold text-slate-500">نوع الطلب: </span>{res.request_type_label}</p>}
+              {res.ticket_kind_label && <p><span className="font-bold text-slate-500">التصنيف: </span>{res.ticket_kind_label}</p>}
+              {res.priority_label && <p><span className="font-bold text-slate-500">الأولوية: </span>{res.priority_label}</p>}
+              {res.creator_name && <p><span className="font-bold text-slate-500">مدخل البيانات: </span>{res.creator_name}</p>}
+              {res.tester_name && <p><span className="font-bold text-slate-500">التيستر المسند: </span>{res.tester_name}</p>}
+              {res.tester_assignment_status_label && <p><span className="font-bold text-slate-500">قرار التيستر: </span>{res.tester_assignment_status_label}</p>}
               {res.developer_name && <p><span className="font-bold text-slate-500">المطور المسند: </span>{res.developer_name}</p>}
+              {res.developer_assignment_status_label && <p><span className="font-bold text-slate-500">قرار المطور: </span>{res.developer_assignment_status_label}</p>}
+              {res.affected_service && <p><span className="font-bold text-slate-500">الخدمة المتأثرة: </span>{res.affected_service}</p>}
               {res.estimation && (
                 <p><span className="font-bold text-slate-500">⏱️ التقدير الزمني: </span>
                   {res.estimation.days ? `${res.estimation.days} يوم` : ""}{res.estimation.days && res.estimation.hours ? " + " : ""}{res.estimation.hours ? `${res.estimation.hours} ساعة` : ""}

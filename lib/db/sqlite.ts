@@ -404,6 +404,7 @@ export function createSqliteRepo(): Repo {
       if (f.status) { where.push("dev_status=?"); args.push(f.status); }
       if (f.developer_id) { where.push("developer_id=?"); args.push(f.developer_id); }
       if (f.tester_id) { where.push("tester_id=?"); args.push(f.tester_id); }
+      if (f.created_by) { where.push("created_by=?"); args.push(f.created_by); }
       if (f.request_type) { where.push("request_type=?"); args.push(f.request_type); }
       if (f.ticket_kind) { where.push("ticket_kind=?"); args.push(f.ticket_kind); }
       if (f.source) { where.push("source=?"); args.push(f.source); }

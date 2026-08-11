@@ -11,6 +11,7 @@ export interface TicketFilter {
   status?: DevStatus | "";
   developer_id?: string;
   tester_id?: string;
+  created_by?: string;
   request_type?: RequestType | "";
   ticket_kind?: TicketKind | "";
   source?: string;

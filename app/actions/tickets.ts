@@ -194,7 +194,7 @@ export async function createInstantSupportAction(formData: FormData) {
 
 // ═══ إسناد التيست (أولاً دائماً) + تقدير التنفيذ ═══
 export async function assignTesterAction(formData: FormData) {
-  const actor = await requireStaff(["admin", "support"]);
+  const actor = await requireStaff(["admin"]);
   const code = String(formData.get("code") ?? "");
   const testerId = String(formData.get("tester_id") ?? "");
   const repo = await getRepo();
@@ -218,7 +218,7 @@ export async function assignDeveloperAction(formData: FormData) {
   if (!t) redirect("/dashboard");
 
   // من يسند؟ الإدارة/الدعم — أو التيست المسند نفسه (يستلم ثم يسلّم للديف)
-  const isManager = actor.role === "admin" || actor.role === "support";
+  const isManager = actor.role === "admin";
   const isAssignedTester = actor.role === "tester" && t.tester_id === actor.id;
   if (!isManager && !isAssignedTester) {
     redirect(`/tickets/${code}?err=${enc("إسناد المطور من صلاحية الإدارة أو التيست المسند فقط")}`);
@@ -281,7 +281,7 @@ export async function declineAssignmentAction(formData: FormData) {
 
 // ═══ تحديث تقدير التنفيذ (ساعات/أيام) — يظهر في الطلب والاستعلام ═══
 export async function setEstimationAction(formData: FormData) {
-  await requireStaff(["admin", "support"]);
+  await requireStaff(["admin"]);
   const code = String(formData.get("code") ?? "");
   const repo = await getRepo();
   const t = await repo.ticketByCode(code);

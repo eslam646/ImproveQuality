@@ -59,7 +59,9 @@ export const STATUS_COLORS: Record<DevStatus, string> = {
 // سير العمل: التيست يستلم أولاً ← يسلّم للديف ← الديف ينجز ويعيد للتيست ← التيست يعتمد أو يُرجع بمشكلة
 export function allowedTransitions(role: Role, current: DevStatus): DevStatus[] {
   const all = ALL_STATUSES.filter((s) => s !== current);
-  if (role === "admin" || role === "support") return all;
+  if (role === "admin") return all;
+  // مدخل البيانات View-only: يضيف ملاحظات فقط ولا يغيّر الحالة
+  if (role === "support") return [];
   if (role === "tester")
     return current === "ready_for_test"
       ? (["test_passed", "test_failed"] as DevStatus[])
