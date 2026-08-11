@@ -5,7 +5,7 @@ import { getRepo } from "@/lib/db";
 import { currentStaff, permissionsForStaff } from "@/lib/auth";
 import { genId } from "@/lib/util";
 
-const MAX_MB = Math.max(4, Math.min(100, Number(process.env.MAX_ATTACHMENT_MB || 25)));
+const MAX_MB = Math.max(4, Math.min(100, Number(process.env.MAX_ATTACHMENT_MB || 50)));
 const MAX_BYTES = MAX_MB * 1024 * 1024; // مؤقتاً عبر التطبيق؛ V2 سينقل الفيديو الكبير إلى R2 Direct Upload
 
 // رفع مرفق: يقبل أعضاء الفريق (كوكي) أو أي شخص يملك كود الطلب (عام، مثل فلسفة النماذج)

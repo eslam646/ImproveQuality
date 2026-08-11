@@ -163,8 +163,8 @@ export function GuestSubmitForm({
       {show("attachment") && (
         <label className="block" style={{ order: orderOf("attachment") }}>
           <span className="mb-1 block text-sm font-semibold">{labelOf("attachment")}{req("attachment") ? " *" : ""}</span>
-          <span className="mb-1 block text-xs text-slate-400">صورة أو ملف يوضح المشكلة — حتى 4 ميجابايت</span>
-          <input name="file" type="file" required={req("attachment")} className="w-full rounded-lg border border-dashed border-slate-300 px-3 py-2 text-sm file:ml-3 file:rounded-md file:border-0 file:bg-blue-50 file:px-3 file:py-1.5 file:text-sm file:font-bold file:text-blue-700" />
+          <span className="mb-1 block text-xs text-slate-400">صورة أو فيديو أو ملف يوضح المشكلة — حتى 50 ميجابايت</span>
+          <input name="file" type="file" accept="image/*,video/mp4,video/quicktime,video/webm,.mkv,.pdf,.txt,.log,.zip,.doc,.docx,.xls,.xlsx" required={req("attachment")} className="w-full rounded-lg border border-dashed border-slate-300 px-3 py-2 text-sm file:ml-3 file:rounded-md file:border-0 file:bg-blue-50 file:px-3 file:py-1.5 file:text-sm file:font-bold file:text-blue-700" />
         </label>
       )}
       <div style={{ order: 990 }}>{err && <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700">{err}</p>}</div>
@@ -247,22 +247,27 @@ export function TrackForm({ initialCode }: { initialCode: string }) {
       {err && <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700">{err}</p>}
       {res && (
         <div className="space-y-3">
-          <div className="flex items-center justify-between rounded-lg bg-slate-50 p-4">
-            <span className="font-mono font-bold" dir="ltr">{res.code}</span>
-            <span className="rounded-full bg-blue-100 px-3 py-1 text-sm font-bold text-blue-800">{res.status_label}</span>
+          <div className="flex items-center justify-between rounded-xl bg-gradient-to-l from-slate-900 to-blue-800 p-4 text-white shadow-sm">
+            <div><span className="block text-xs text-blue-200">كود الطلب</span><span className="font-mono text-lg font-extrabold" dir="ltr">{res.code}</span></div>
+            <span className="rounded-full border border-white/30 bg-white/15 px-4 py-1.5 text-sm font-bold">{res.status_label}</span>
           </div>
           {orderedTrackRows(res).length > 0 && (
-            <div className="space-y-1 rounded-lg border border-slate-100 bg-white p-4 text-sm">
-              {orderedTrackRows(res).map((r) => <p key={r.key}><span className="font-bold text-slate-500">{r.label}: </span>{r.value}</p>)}
+            <div className="grid gap-3 rounded-xl border border-slate-200 bg-slate-50/60 p-4 sm:grid-cols-2">
+              {orderedTrackRows(res).map((r) => (
+                <div key={r.key} className={`rounded-lg border border-slate-100 bg-white p-3 shadow-sm ${["show_title", "show_assignment_status", "show_affected_service"].includes(r.key) ? "sm:col-span-2" : ""}`}>
+                  <span className="mb-1 block text-[11px] font-bold text-slate-400">{r.label}</span>
+                  <span className="text-sm font-semibold leading-6 text-slate-800">{r.value}</span>
+                </div>
+              ))}
             </div>
           )}
           {res.custom && res.custom.length > 0 && (
-            <div className="space-y-1 rounded-lg border border-slate-100 bg-white p-4 text-sm">
+            <div className="grid gap-3 rounded-xl border border-slate-200 bg-white p-4 text-sm sm:grid-cols-2">
               {res.custom.map((c, i) => {
                 const ref = c.file ? parseFileRef(c.value) : null;
                 return (
-                  <p key={i}>
-                    <span className="font-bold text-slate-500">{c.label}: </span>
+                  <p key={i} className="rounded-lg bg-slate-50 p-3">
+                    <span className="mb-1 block text-xs font-bold text-slate-500">{c.label}</span>
                     {ref && ref.url.startsWith("http")
                       ? <a href={ref.url} target="_blank" rel="noreferrer" className="font-semibold text-blue-700 underline">📎 {ref.name}</a>
                       : ref ? <span>📎 {ref.name}</span> : <span>{c.value}</span>}
@@ -272,13 +277,14 @@ export function TrackForm({ initialCode }: { initialCode: string }) {
             </div>
           )}
           {res.timeline && (
-            <div>
-              <p className="mb-2 text-sm font-bold text-slate-600">مسار الحالة:</p>
-              <ol className="space-y-2 border-r-2 border-slate-200 pr-4">
+            <div className="rounded-xl border border-slate-200 bg-white p-4">
+              <p className="mb-4 text-sm font-extrabold text-slate-700">🕘 مسار الحالة</p>
+              <ol className="space-y-0">
                 {res.timeline.map((t, i) => (
-                  <li key={i} className="text-sm">
-                    <b>{t.status_label}</b>
-                    <span className="mr-2 text-xs text-slate-400">{new Date(t.at).toLocaleString("ar-EG")}</span>
+                  <li key={i} className="relative flex gap-3 pb-5 last:pb-0">
+                    {i < res.timeline!.length - 1 && <span className="absolute right-[7px] top-4 h-full w-0.5 bg-blue-100" />}
+                    <span className="relative z-10 mt-1 h-4 w-4 shrink-0 rounded-full border-4 border-blue-100 bg-blue-600" />
+                    <div><b className="block text-sm text-slate-800">{t.status_label}</b><span className="text-xs text-slate-400">{new Date(t.at).toLocaleString("ar-EG")}</span></div>
                   </li>
                 ))}
               </ol>

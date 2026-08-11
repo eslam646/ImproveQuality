@@ -4,8 +4,9 @@ import path from "path";
 import { getRepo } from "@/lib/db";
 import { clientIp, rateLimit } from "@/lib/ratelimit";
 
-const MAX_BYTES = 4 * 1024 * 1024; // 4MB
-const ALLOWED_EXT = ["png", "jpg", "jpeg", "webp", "gif", "pdf", "txt", "zip", "doc", "docx", "xls", "xlsx"];
+const MAX_MB = Math.max(4, Math.min(100, Number(process.env.MAX_ATTACHMENT_MB || 50)));
+const MAX_BYTES = MAX_MB * 1024 * 1024;
+const ALLOWED_EXT = ["png", "jpg", "jpeg", "webp", "gif", "pdf", "txt", "log", "zip", "doc", "docx", "xls", "xlsx", "mp4", "mov", "webm", "mkv"];
 
 // رفع ملف لحقل مخصص من نوع «ملف» — لا يعمل إلا إذا فعّل الأدمن حقل ملف واحداً على الأقل،
 // وأسماء الملفات عشوائية تماماً (لا يتحكم المستخدم في المسار إطلاقاً)
@@ -24,11 +25,11 @@ export async function POST(req: Request) {
   const form = await req.formData().catch(() => null);
   const file = form?.get("file");
   if (!(file instanceof File)) return NextResponse.json({ error: "الملف مطلوب" }, { status: 400 });
-  if (file.size > MAX_BYTES) return NextResponse.json({ error: "الحد الأقصى للملف 4 ميجابايت" }, { status: 400 });
+  if (file.size > MAX_BYTES) return NextResponse.json({ error: `الحد الأقصى الحالي ${MAX_MB} ميجابايت` }, { status: 400 });
 
   const ext = (file.name.split(".").pop() ?? "").toLowerCase();
   if (!ALLOWED_EXT.includes(ext)) {
-    return NextResponse.json({ error: "نوع الملف غير مسموح — المسموح: صور، PDF، Word، Excel، ZIP، نصوص" }, { status: 400 });
+    return NextResponse.json({ error: "نوع الملف غير مسموح — المسموح: صور، فيديو MP4/MOV/WEBM/MKV، PDF، Office، ZIP، TXT وLOG" }, { status: 400 });
   }
 
   const fname = `${crypto.randomUUID()}.${ext}`;
