@@ -9,6 +9,7 @@ import { CustomFieldsBuilder } from "@/components/custom-fields-builder";
 import { TrackCfgEditor } from "@/components/track-cfg-editor";
 import { UrgentFormDesigner } from "@/components/urgent-form-designer";
 import { UserPermissionsEditor } from "@/components/user-permissions-editor";
+import { teamsConfigStatus } from "@/lib/teams";
 
 export const dynamic = "force-dynamic";
 
@@ -24,6 +25,7 @@ export default async function SettingsPage({
   const staff = await repo.staffList(true);
   const brevo = !!process.env.BREVO_API_KEY;
   const resend = !!process.env.RESEND_API_KEY;
+  const teams = teamsConfigStatus();
 
   return (
     <div className="mx-auto max-w-2xl space-y-5">
@@ -61,6 +63,16 @@ export default async function SettingsPage({
       </Card>
       <Card title="🔍 صفحة الاستعلام العامة — ماذا يرى صاحب الكود">
         <TrackCfgEditor initial={s.track_cfg} />
+      </Card>
+      <Card title="🎥 تكامل Microsoft Teams">
+        <div className="space-y-2 text-sm">
+          <p>{teams.ready ? "✅ Microsoft Graph جاهز لإنشاء اجتماعات Teams وإرسال دعوات Outlook" : "⚠️ واجهة الاجتماعات جاهزة، لكن أسرار Microsoft Entra لم تُضبط بعد"}</p>
+          <ul className="grid grid-cols-2 gap-2 text-xs">
+            <li>{teams.tenantId ? "✅" : "⬜"} Tenant ID</li><li>{teams.clientId ? "✅" : "⬜"} Client ID</li>
+            <li>{teams.clientSecret ? "✅" : "⬜"} Client Secret</li><li>{teams.organizer ? "✅" : "⬜"} Organizer User</li>
+          </ul>
+          <p className="text-xs text-slate-500">القيم الحقيقية توضع في Cloudflare Secrets أو .env.local فقط ولا تظهر هنا.</p>
+        </div>
       </Card>
       <Card title="حالة مزودي البريد">
         <ul className="space-y-2 text-sm">

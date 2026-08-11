@@ -1,7 +1,7 @@
 // طبقة الوصول للبيانات — واجهة موحدة مع تنفيذين: SQLite (محلي) + Supabase (إنتاج)
 import type {
   AutomationRule, Attachment, AuditEntry, Client, Condition, DevStatus, EmailLog, EmailTemplate,
-  Job, Notification, PrivateAccessLink, Settings, Staff, Ticket, TicketAssignment, TicketEvent, Action, TemplateBlocks,
+  Job, Meeting, MeetingParticipant, Notification, PrivateAccessLink, Settings, Staff, Ticket, TicketAssignment, TicketEvent, Action, TemplateBlocks,
   RequestType, TicketKind, TicketPriority,
 } from "../types";
 
@@ -66,6 +66,13 @@ export interface Repo {
   assignmentCurrent(ticketId: string, role: "tester" | "developer"): Promise<TicketAssignment | null>;
   assignmentRespond(id: string, status: "accepted" | "declined", reason?: string | null): Promise<TicketAssignment | null>;
   assignmentList(ticketId: string): Promise<TicketAssignment[]>;
+
+  meetingCreate(m: Omit<Meeting, "id" | "created_at" | "updated_at">): Promise<Meeting>;
+  meetingList(ticketId: string): Promise<Meeting[]>;
+  meetingGet(id: string): Promise<Meeting | null>;
+  meetingUpdate(id: string, patch: Partial<Meeting>): Promise<Meeting | null>;
+  meetingParticipantsAdd(items: Omit<MeetingParticipant, "id">[]): Promise<void>;
+  meetingParticipantsList(meetingId: string): Promise<MeetingParticipant[]>;
 
   auditAdd(e: {
     entity_type: string; entity_id: string; action: string; actor_staff_id?: string | null; actor_label?: string | null;

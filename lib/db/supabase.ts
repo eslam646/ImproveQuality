@@ -1,6 +1,6 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type { Repo, TicketFilter } from "./index";
-import type { AuditEntry, Client, CustomFieldCfg, EmailLog, FormFieldCfg, Job, PermKey, PrivateAccessLink, Role, RolePermissions, Settings, Staff, Ticket, TicketAssignment, TicketEvent, TrackPageCfg, UrgentFormFieldCfg, UserPermissionOverrides } from "../types";
+import type { AuditEntry, Client, CustomFieldCfg, EmailLog, FormFieldCfg, Job, Meeting, MeetingParticipant, PermKey, PrivateAccessLink, Role, RolePermissions, Settings, Staff, Ticket, TicketAssignment, TicketEvent, TrackPageCfg, UrgentFormFieldCfg, UserPermissionOverrides } from "../types";
 import { DEFAULT_FORM_FIELDS, DEFAULT_ROLE_PERMISSIONS, DEFAULT_TRACK_CFG, DEFAULT_URGENT_FORM_FIELDS } from "../types";
 import { SEED_RULES, SEED_STAFF, SEED_TEMPLATES, SEED_TICKETS } from "../seed";
 import { genId, genTicketCode, nowIso } from "../util";
@@ -309,6 +309,31 @@ export async function createSupabaseRepo(): Promise<Repo> {
     },
     async assignmentList(ticketId) {
       return (must(await sb.from("ticket_assignments").select("*").eq("ticket_id", ticketId).order("assigned_at", { ascending: false })) as TicketAssignment[]) ?? [];
+    },
+
+    async meetingCreate(m) {
+      const now = nowIso();
+      const row = { id: genId("meet"), ...m, created_at: now, updated_at: now };
+      const { data } = await sb.from("meetings").insert(row).select().single();
+      return data as Meeting;
+    },
+    async meetingList(ticketId) {
+      return (must(await sb.from("meetings").select("*").eq("ticket_id", ticketId).order("starts_at", { ascending: false })) as Meeting[]) ?? [];
+    },
+    async meetingGet(id) {
+      const { data } = await sb.from("meetings").select("*").eq("id", id).maybeSingle();
+      return (data as Meeting) ?? null;
+    },
+    async meetingUpdate(id, patch) {
+      const { data } = await sb.from("meetings").update({ ...patch, updated_at: nowIso() }).eq("id", id).select().maybeSingle();
+      return (data as Meeting) ?? null;
+    },
+    async meetingParticipantsAdd(items) {
+      if (!items.length) return;
+      must(await sb.from("meeting_participants").insert(items.map((x) => ({ id: genId("mp"), ...x }))));
+    },
+    async meetingParticipantsList(meetingId) {
+      return (must(await sb.from("meeting_participants").select("*").eq("meeting_id", meetingId)) as MeetingParticipant[]) ?? [];
     },
 
     async auditAdd(e) {

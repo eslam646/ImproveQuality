@@ -12,6 +12,8 @@ import { fmtDate, parseFileRef } from "@/lib/util";
 import { AttachmentUpload } from "@/components/attachment-upload";
 import { StatusChangeForm } from "@/components/status-change-form";
 import type { DevStatus, TicketEvent } from "@/lib/types";
+import { TeamsMeetings } from "@/components/teams-meetings";
+import { teamsConfigStatus } from "@/lib/teams";
 
 export const dynamic = "force-dynamic";
 
@@ -69,11 +71,12 @@ export default async function TicketDetailsPage({
   const testers = staffAll.filter((s) => s.role === "tester");
   const devs = staffAll.filter((s) => s.role === "developer");
 
-  const [events, attachments, emailLog, auditEntries] = await Promise.all([
+  const [events, attachments, emailLog, auditEntries, meetings] = await Promise.all([
     repo.eventList(ticket.id),
     repo.attachmentList(ticket.id),
     perms.emails ? repo.emailLogList(1, 10, ticket.id) : Promise.resolve({ rows: [], total: 0 }),
     perms.view_audit ? repo.auditList("ticket", ticket.id) : Promise.resolve([]),
+    (perms.manage_meetings || perms.join_meetings) ? repo.meetingList(ticket.id) : Promise.resolve([]),
   ]);
 
   const isAssignedTester = ticket.tester_id === actor.id;
@@ -183,6 +186,20 @@ export default async function TicketDetailsPage({
               <p className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-500">🔒 رفع المرفقات بعد الإنشاء متاح فقط للأدمن أو التيستر/المطور المسند على الطلب.</p>
             )}
           </Card>
+
+          {(perms.manage_meetings || perms.join_meetings) && (
+            <Card>
+              <TeamsMeetings
+                code={ticket.code}
+                defaultSubject={`اجتماع ${ticket.code} — ${ticket.title || ticket.client_name}`}
+                configured={teamsConfigStatus().ready}
+                canManage={perms.manage_meetings}
+                canJoin={perms.join_meetings}
+                staff={staffAll.map((s) => ({ id: s.id, name: s.name, email: s.email, selected: [ticket.created_by, ticket.tester_id, ticket.developer_id].includes(s.id) }))}
+                meetings={meetings.map((m) => ({ id: m.id, subject: m.subject, starts_at: m.starts_at, ends_at: m.ends_at, join_url: m.join_url, status: m.status }))}
+              />
+            </Card>
+          )}
 
           {/* سير العمل والإجراءات */}
           {hasActions && (

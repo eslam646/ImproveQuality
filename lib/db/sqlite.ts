@@ -3,7 +3,7 @@ import fs from "fs";
 import path from "path";
 import type { Repo, TicketFilter } from "./index";
 import type {
-  AuditEntry, AutomationRule, Attachment, Client, CustomFieldCfg, EmailLog, EmailTemplate, FormFieldCfg, Job, Notification,
+  AuditEntry, AutomationRule, Attachment, Client, CustomFieldCfg, EmailLog, EmailTemplate, FormFieldCfg, Job, Meeting, MeetingParticipant, Notification,
   PermKey, PrivateAccessLink, Role, RolePermissions, Settings, Staff, Ticket, TicketAssignment, TicketEvent, TrackPageCfg, UrgentFormFieldCfg, UserPermissionOverrides,
 } from "../types";
 import { DEFAULT_FORM_FIELDS, DEFAULT_ROLE_PERMISSIONS, DEFAULT_TRACK_CFG, DEFAULT_URGENT_FORM_FIELDS } from "../types";
@@ -91,6 +91,15 @@ export function createSqliteRepo(): Repo {
     responded_at TEXT, completed_at TEXT, is_current INTEGER NOT NULL DEFAULT 1
   );
   CREATE INDEX IF NOT EXISTS idx_assignments_ticket ON ticket_assignments(ticket_id, assignment_role, is_current);
+  CREATE TABLE IF NOT EXISTS meetings (
+    id TEXT PRIMARY KEY, ticket_id TEXT, provider TEXT NOT NULL DEFAULT 'teams', provider_meeting_id TEXT,
+    subject TEXT NOT NULL, starts_at TEXT NOT NULL, ends_at TEXT NOT NULL, join_url TEXT,
+    organizer_staff_id TEXT, status TEXT NOT NULL DEFAULT 'scheduled', created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS meeting_participants (
+    id TEXT PRIMARY KEY, meeting_id TEXT NOT NULL, staff_id TEXT, email TEXT, response_status TEXT NOT NULL DEFAULT 'pending', joined_at TEXT, left_at TEXT
+  );
+  CREATE INDEX IF NOT EXISTS idx_meetings_ticket ON meetings(ticket_id, starts_at);
   CREATE TABLE IF NOT EXISTS audit_log (
     id INTEGER PRIMARY KEY AUTOINCREMENT, entity_type TEXT NOT NULL, entity_id TEXT NOT NULL, action TEXT NOT NULL,
     actor_staff_id TEXT, actor_label TEXT, old_values TEXT, new_values TEXT, request_ip TEXT, user_agent TEXT,
@@ -497,6 +506,27 @@ export function createSqliteRepo(): Repo {
       const rows = db.prepare("SELECT * FROM ticket_assignments WHERE ticket_id=? ORDER BY assigned_at DESC").all(ticketId) as (Omit<TicketAssignment, "is_current"> & { is_current: number })[];
       return rows.map((r) => ({ ...r, is_current: !!r.is_current }));
     },
+
+    async meetingCreate(m) {
+      const now = nowIso();
+      const row: Meeting = { id: genId("meet"), ...m, created_at: now, updated_at: now };
+      db.prepare(`INSERT INTO meetings (id,ticket_id,provider,provider_meeting_id,subject,starts_at,ends_at,join_url,organizer_staff_id,status,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`)
+        .run(row.id,row.ticket_id,row.provider,row.provider_meeting_id,row.subject,row.starts_at,row.ends_at,row.join_url,row.organizer_staff_id,row.status,row.created_at,row.updated_at);
+      return row;
+    },
+    async meetingList(ticketId) { return db.prepare("SELECT * FROM meetings WHERE ticket_id=? ORDER BY starts_at DESC").all(ticketId) as Meeting[]; },
+    async meetingGet(id) { return (db.prepare("SELECT * FROM meetings WHERE id=?").get(id) as Meeting) ?? null; },
+    async meetingUpdate(id, patch) {
+      const old = await this.meetingGet(id); if (!old) return null; const m = { ...old, ...patch, updated_at: nowIso() };
+      db.prepare("UPDATE meetings SET provider_meeting_id=?,subject=?,starts_at=?,ends_at=?,join_url=?,status=?,updated_at=? WHERE id=?")
+        .run(m.provider_meeting_id,m.subject,m.starts_at,m.ends_at,m.join_url,m.status,m.updated_at,id);
+      return m;
+    },
+    async meetingParticipantsAdd(items) {
+      const q=db.prepare("INSERT INTO meeting_participants(id,meeting_id,staff_id,email,response_status,joined_at,left_at) VALUES (?,?,?,?,?,?,?)");
+      items.forEach((x)=>q.run(genId("mp"),x.meeting_id,x.staff_id,x.email,x.response_status,x.joined_at,x.left_at));
+    },
+    async meetingParticipantsList(meetingId) { return db.prepare("SELECT * FROM meeting_participants WHERE meeting_id=?").all(meetingId) as MeetingParticipant[]; },
 
     async auditAdd(e) {
       const created_at = nowIso();
