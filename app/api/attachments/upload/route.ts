@@ -31,8 +31,11 @@ export async function POST(req: Request) {
   }
   const uploader = actor?.name ?? "مقدم الطلب (أثناء الإنشاء)";
 
-  const safeName = file.name.replace(/[^\w.\u0600-\u06FF-]+/g, "_").slice(-80);
-  const fname = `${Date.now()}_${safeName}`;
+  // مفتاح التخزين لا يستخدم اسم الملف الأصلي إطلاقاً (العربي/المسافات/الرموز قد تُرفض من Storage)
+  // الاسم الأصلي يبقى محفوظاً في قاعدة البيانات للعرض والتنزيل.
+  const rawExt = (file.name.split(".").pop() || "bin").toLowerCase();
+  const ext = /^[a-z0-9]{1,10}$/.test(rawExt) ? rawExt : "bin";
+  const fname = `${crypto.randomUUID()}.${ext}`;
 
   let storedPath: string;
   let driver: "local" | "supabase";
