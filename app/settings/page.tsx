@@ -7,6 +7,7 @@ import { LinkCenter } from "@/components/link-center";
 import { RolePermissionsEditor } from "@/components/role-permissions-editor";
 import { CustomFieldsBuilder } from "@/components/custom-fields-builder";
 import { TrackCfgEditor } from "@/components/track-cfg-editor";
+import { UrgentFormDesigner } from "@/components/urgent-form-designer";
 
 export const dynamic = "force-dynamic";
 
@@ -43,8 +44,11 @@ export default async function SettingsPage({
       <Card title="الإعدادات العامة">
         <SettingsForm initial={s} />
       </Card>
-      <Card title="تصميم النماذج — الحقول الأساسية الظاهرة والإجبارية">
+      <Card title="تصميم نموذج الطلب العادي — إظهار/إلزام/ترتيب بالسحب">
         <FormDesigner initial={s.form_fields} />
+      </Card>
+      <Card title="🚨 تصميم نموذج الدعم الفوري — Drag & Drop">
+        <UrgentFormDesigner initial={s.urgent_form_fields} />
       </Card>
       <Card title="🔍 صفحة الاستعلام العامة — ماذا يرى صاحب الكود">
         <TrackCfgEditor initial={s.track_cfg} />

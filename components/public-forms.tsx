@@ -47,6 +47,7 @@ export function GuestSubmitForm({
   const show = (k: string) => fields.find((f) => f.key === k)?.visible ?? true;
   const req = (k: string) => fields.find((f) => f.key === k)?.required ?? false;
   const labelOf = (k: string) => fields.find((f) => f.key === k)?.label ?? k;
+  const orderOf = (k: string) => { const i = fields.findIndex((f) => f.key === k); return i < 0 ? 500 : i; };
 
   if (ok) {
     return (
@@ -68,7 +69,7 @@ export function GuestSubmitForm({
 
   return (
     <form
-      className="space-y-4"
+      className="flex flex-col gap-4"
       onSubmit={async (e) => {
         e.preventDefault();
         setLoading(true); setErr(null);
@@ -115,7 +116,7 @@ export function GuestSubmitForm({
       }}
     >
       {show("client") && (
-        <label className="block">
+        <label className="block" style={{ order: orderOf("client") }}>
           <span className="mb-1 block text-sm font-semibold">{labelOf("client")}{req("client") ? " *" : ""}</span>
           {clients.length > 0 ? (
             <select
@@ -141,33 +142,33 @@ export function GuestSubmitForm({
         </label>
       )}
       {show("client_contact") && (
-        <label className="block">
+        <label className="block" style={{ order: orderOf("client_contact") }}>
           <span className="mb-1 block text-sm font-semibold">{labelOf("client_contact")}{req("client_contact") ? " *" : ""}</span>
           <span className="mb-1 block text-xs text-slate-400">بإدخال بريدك ستصلك إشعارات تحديث الحالة تلقائياً</span>
           <input name="client_contact" required={req("client_contact")} className={inputCls} placeholder="you@example.com" />
         </label>
       )}
       {show("details") && (
-        <label className="block">
+        <label className="block" style={{ order: orderOf("details") }}>
           <span className="mb-1 block text-sm font-semibold">{labelOf("details")}{req("details") ? " *" : ""}</span>
           <textarea name="details" required={req("details")} minLength={5} rows={5} className={inputCls} placeholder="اشرح مشكلتك بالتفصيل…" />
         </label>
       )}
       {customFields.map((cf) => (
-        <label key={cf.key} className="block">
+        <label key={cf.key} className="block" style={{ order: 800 }}>
           <span className="mb-1 block text-sm font-semibold">{cf.label}{cf.required ? " *" : ""}</span>
           <CustomFieldInput f={cf} />
         </label>
       ))}
       {show("attachment") && (
-        <label className="block">
+        <label className="block" style={{ order: orderOf("attachment") }}>
           <span className="mb-1 block text-sm font-semibold">{labelOf("attachment")}{req("attachment") ? " *" : ""}</span>
           <span className="mb-1 block text-xs text-slate-400">صورة أو ملف يوضح المشكلة — حتى 4 ميجابايت</span>
           <input name="file" type="file" required={req("attachment")} className="w-full rounded-lg border border-dashed border-slate-300 px-3 py-2 text-sm file:ml-3 file:rounded-md file:border-0 file:bg-blue-50 file:px-3 file:py-1.5 file:text-sm file:font-bold file:text-blue-700" />
         </label>
       )}
-      {err && <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700">{err}</p>}
-      <button disabled={loading} className="w-full rounded-lg bg-blue-600 px-4 py-2.5 font-bold text-white hover:bg-blue-700 disabled:opacity-50">
+      <div style={{ order: 990 }}>{err && <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700">{err}</p>}</div>
+      <button style={{ order: 999 }} disabled={loading} className="w-full rounded-lg bg-blue-600 px-4 py-2.5 font-bold text-white hover:bg-blue-700 disabled:opacity-50">
         {loading ? (attState === "uploading" ? "جارٍ رفع المرفق…" : "جارٍ الإرسال…") : "إرسال الطلب 📨"}
       </button>
     </form>
@@ -177,6 +178,7 @@ export function GuestSubmitForm({
 interface TrackResult {
   code: string;
   status_label: string;
+  display_order?: string[];
   last_status_change?: string;
   client_name?: string;
   title?: string;
@@ -192,6 +194,28 @@ interface TrackResult {
   estimation?: { days: number | null; hours: number | null };
   custom?: { label: string; value: string; file?: boolean }[];
   timeline?: { status_label: string; at: string }[];
+}
+
+function orderedTrackRows(res: TrackResult): { key: string; label: string; value: string }[] {
+  const estimation = res.estimation
+    ? `${res.estimation.days ? `${res.estimation.days} يوم` : ""}${res.estimation.days && res.estimation.hours ? " + " : ""}${res.estimation.hours ? `${res.estimation.hours} ساعة` : ""}`
+    : "";
+  const rows: Record<string, { label: string; value: string }> = {
+    show_title: { label: "العنوان", value: res.title ?? "" },
+    show_ticket_kind: { label: "التصنيف", value: res.ticket_kind_label ?? "" },
+    show_request_type: { label: "نوع الطلب", value: res.request_type_label ?? "" },
+    show_client: { label: "العميل", value: res.client_name ?? "" },
+    show_creator: { label: "مدخل البيانات", value: res.creator_name ?? "" },
+    show_tester: { label: "التيستر المسند", value: res.tester_name ?? "" },
+    show_developer: { label: "المطور المسند", value: res.developer_name ?? "" },
+    show_assignment_status: { label: "قرارات التكليف", value: [res.tester_assignment_status_label && `التيستر: ${res.tester_assignment_status_label}`, res.developer_assignment_status_label && `المطور: ${res.developer_assignment_status_label}`].filter(Boolean).join(" — ") },
+    show_priority: { label: "الأولوية", value: res.priority_label ?? "" },
+    show_affected_service: { label: "الخدمة المتأثرة", value: res.affected_service ?? "" },
+    show_estimation: { label: "التقدير الزمني", value: estimation },
+    show_last_change: { label: "آخر تحديث للحالة", value: res.last_status_change ? new Date(res.last_status_change).toLocaleString("ar-EG") : "" },
+  };
+  const order = res.display_order?.length ? res.display_order : Object.keys(rows);
+  return order.filter((k) => rows[k]?.value).map((k) => ({ key: k, ...rows[k] }));
 }
 
 export function TrackForm({ initialCode }: { initialCode: string }) {
@@ -227,27 +251,9 @@ export function TrackForm({ initialCode }: { initialCode: string }) {
             <span className="font-mono font-bold" dir="ltr">{res.code}</span>
             <span className="rounded-full bg-blue-100 px-3 py-1 text-sm font-bold text-blue-800">{res.status_label}</span>
           </div>
-          {(res.client_name || res.title || res.request_type_label || res.ticket_kind_label || res.creator_name || res.tester_name || res.developer_name || res.last_status_change || res.estimation) && (
+          {orderedTrackRows(res).length > 0 && (
             <div className="space-y-1 rounded-lg border border-slate-100 bg-white p-4 text-sm">
-              {res.client_name && <p><span className="font-bold text-slate-500">العميل: </span>{res.client_name}</p>}
-              {res.title && <p><span className="font-bold text-slate-500">العنوان: </span>{res.title}</p>}
-              {res.request_type_label && <p><span className="font-bold text-slate-500">نوع الطلب: </span>{res.request_type_label}</p>}
-              {res.ticket_kind_label && <p><span className="font-bold text-slate-500">التصنيف: </span>{res.ticket_kind_label}</p>}
-              {res.priority_label && <p><span className="font-bold text-slate-500">الأولوية: </span>{res.priority_label}</p>}
-              {res.creator_name && <p><span className="font-bold text-slate-500">مدخل البيانات: </span>{res.creator_name}</p>}
-              {res.tester_name && <p><span className="font-bold text-slate-500">التيستر المسند: </span>{res.tester_name}</p>}
-              {res.tester_assignment_status_label && <p><span className="font-bold text-slate-500">قرار التيستر: </span>{res.tester_assignment_status_label}</p>}
-              {res.developer_name && <p><span className="font-bold text-slate-500">المطور المسند: </span>{res.developer_name}</p>}
-              {res.developer_assignment_status_label && <p><span className="font-bold text-slate-500">قرار المطور: </span>{res.developer_assignment_status_label}</p>}
-              {res.affected_service && <p><span className="font-bold text-slate-500">الخدمة المتأثرة: </span>{res.affected_service}</p>}
-              {res.estimation && (
-                <p><span className="font-bold text-slate-500">⏱️ التقدير الزمني: </span>
-                  {res.estimation.days ? `${res.estimation.days} يوم` : ""}{res.estimation.days && res.estimation.hours ? " + " : ""}{res.estimation.hours ? `${res.estimation.hours} ساعة` : ""}
-                </p>
-              )}
-              {res.last_status_change && (
-                <p><span className="font-bold text-slate-500">آخر تحديث للحالة: </span>{new Date(res.last_status_change).toLocaleString("ar-EG")}</p>
-              )}
+              {orderedTrackRows(res).map((r) => <p key={r.key}><span className="font-bold text-slate-500">{r.label}: </span>{r.value}</p>)}
             </div>
           )}
           {res.custom && res.custom.length > 0 && (

@@ -1,9 +1,10 @@
 import { escapeHtml } from "./util";
-import type { Settings, TemplateBlocks, Ticket } from "./types";
+import type { Settings, TemplateBlockKey, TemplateBlocks, Ticket } from "./types";
+import { DEFAULT_TEMPLATE_BLOCKS } from "./types";
 import { REQUEST_TYPE_LABELS, STATUS_LABELS, TICKET_KIND_LABELS } from "./labels";
 import type { DevStatus } from "./types";
 
-export const BLOCK_LABELS: Record<keyof TemplateBlocks, string> = {
+export const BLOCK_LABELS: Record<TemplateBlockKey, string> = {
   status: "شارة الحالة الحالية (مع الحالة السابقة)",
   client: "اسم العميل",
   title: "عنوان الطلب / المشكلة",
@@ -94,23 +95,19 @@ export function renderBlocks(
     `<td style="padding:8px 14px;border-bottom:1px solid #e2e8f0;font-size:14px;color:#0f172a">${value}</td></tr>`;
 
   let info = row("كود الطلب", `<b dir="ltr" style="font-family:monospace">${esc(vars.code)}</b>`);
-  if (blocks.status) {
-    info += row(
-      "الحالة الحالية",
-      `<span style="display:inline-block;background:#dbeafe;color:#1e40af;border-radius:999px;padding:2px 12px;font-size:13px;font-weight:700">${esc(vars.status_label)}</span>` +
-        (vars.old_status_label ? ` <span style="color:#94a3b8;font-size:12px">(كانت: ${esc(vars.old_status_label)})</span>` : ""),
-    );
+  const order = blocks.order?.length ? blocks.order : (DEFAULT_TEMPLATE_BLOCKS.order ?? []);
+  for (const key of order) {
+    if (key === "status" && blocks.status) info += row("الحالة الحالية", `<span style="display:inline-block;background:#dbeafe;color:#1e40af;border-radius:999px;padding:2px 12px;font-size:13px;font-weight:700">${esc(vars.status_label)}</span>${vars.old_status_label ? ` <span style="color:#94a3b8;font-size:12px">(كانت: ${esc(vars.old_status_label)})</span>` : ""}`);
+    if (key === "client" && blocks.client) info += row("العميل", esc(vars.client_name));
+    if (key === "title" && blocks.title) info += row("عنوان الطلب", esc(vars.title));
+    if (key === "request_type" && blocks.request_type) info += row("نوع الطلب", esc(vars.request_type));
+    if (key === "priority" && blocks.priority) info += row("التصنيف / الأولوية", `${esc(vars.ticket_kind)} — ${esc(vars.priority)}`);
+    if (key === "creator" && blocks.creator) info += row("مدخل البيانات", esc(vars.created_by_name));
+    if (key === "tester" && blocks.tester) info += row("التيستر المسند", esc(vars.tester_name));
+    if (key === "developer" && blocks.developer) info += row("المطور المسند", esc(vars.developer_name));
+    if (key === "estimation" && blocks.estimation) info += row("التقدير الزمني", esc(vars.estimation));
+    if (key === "affected_service" && blocks.affected_service && vars.affected_service && vars.affected_service !== "غير محدد") info += row("الخدمة المتأثرة", esc(vars.affected_service));
   }
-  if (blocks.client) info += row("العميل", esc(vars.client_name));
-  if (blocks.title) info += row("عنوان الطلب", esc(vars.title));
-  if (blocks.request_type) info += row("نوع الطلب", esc(vars.request_type));
-  if (blocks.priority) info += row("التصنيف / الأولوية", `${esc(vars.ticket_kind)} — ${esc(vars.priority)}`);
-  if (blocks.creator) info += row("مدخل البيانات", esc(vars.created_by_name));
-  if (blocks.tester) info += row("التيستر المسند", esc(vars.tester_name));
-  if (blocks.developer) info += row("المطور المسند", esc(vars.developer_name));
-  if (blocks.estimation) info += row("التقدير الزمني", esc(vars.estimation));
-  if (blocks.affected_service && vars.affected_service && vars.affected_service !== "غير محدد")
-    info += row("الخدمة المتأثرة", esc(vars.affected_service));
 
   let html = "";
   if (introHtml.trim()) html += `<p style="margin:0 0 14px">${introHtml}</p>`;
@@ -120,19 +117,14 @@ export function renderBlocks(
     `<div style="margin-top:14px"><div style="font-size:13px;font-weight:700;color:#475569;margin-bottom:4px">${title}</div>` +
     `<div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:12px 14px;font-size:14px;color:#0f172a;line-height:1.9">${body}</div></div>`;
 
-  if (blocks.details && vars["ticket.details"]) {
-    html += section("تفاصيل الطلب", esc(vars["ticket.details"]).replace(/\n/g, "<br>"));
-  }
-  if (blocks.note && vars.note) {
-    html += section("آخر ملاحظة", esc(vars.note).replace(/\n/g, "<br>"));
-  }
-
   const btn = (href: string, label: string, bg: string) =>
     `<a href="${esc(href)}" style="display:inline-block;background:${bg};color:#ffffff;text-decoration:none;border-radius:10px;padding:10px 18px;font-size:14px;font-weight:700;margin:4px 0 0 8px">${label}</a>`;
-  let buttons = "";
-  if (blocks.track_button) buttons += btn(vars.track_url, "🔍 عرض الطلب", "#1d4ed8");
-  if (blocks.update_button) buttons += btn(vars.update_url, "✏️ تحديث حالة الطلب", "#0f766e");
-  if (buttons) html += `<div style="margin-top:18px">${buttons}</div>`;
+  for (const key of order) {
+    if (key === "details" && blocks.details && vars["ticket.details"]) html += section("تفاصيل الطلب", esc(vars["ticket.details"]).replace(/\n/g, "<br>"));
+    if (key === "note" && blocks.note && vars.note) html += section("آخر ملاحظة", esc(vars.note).replace(/\n/g, "<br>"));
+    if (key === "track_button" && blocks.track_button) html += `<div style="margin-top:18px">${btn(vars.track_url, "🔍 عرض الطلب", "#1d4ed8")}</div>`;
+    if (key === "update_button" && blocks.update_button) html += `<div style="margin-top:18px">${btn(vars.update_url, "✏️ تحديث حالة الطلب", "#0f766e")}</div>`;
+  }
 
   return html;
 }

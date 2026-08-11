@@ -156,6 +156,9 @@ export async function createInstantSupportAction(formData: FormData) {
   const tester_id = String(formData.get("tester_id") ?? "").trim();
   const developer_id = String(formData.get("developer_id") ?? "").trim();
   const fail = (msg: string): never => redirect(`/instant-support?err=${enc(msg)}`);
+  const urgentCfg = (await repo.settingsGet()).urgent_form_fields;
+  const required = (key: string) => urgentCfg.find((f) => f.key === key)?.required ?? false;
+  const visible = (key: string) => urgentCfg.find((f) => f.key === key)?.visible ?? true;
 
   if (client_id) {
     const c = (await repo.clientsList()).find((x) => x.id === client_id);
@@ -165,7 +168,7 @@ export async function createInstantSupportAction(formData: FormData) {
   if (!requester || !requester.active || !["support", "admin"].includes(requester.role)) fail("اختيار مدخل البيانات إجباري");
   if (client_name.length < 2) fail("اختر العميل أو اكتب اسمه");
   if (title.length < 3) fail("عنوان المشكلة الطارئة إجباري");
-  if (affected_service.length < 2) fail("حدد السيرفر أو قاعدة البيانات أو الخدمة المتأثرة");
+  if (visible("affected_service") && required("affected_service") && affected_service.length < 2) fail("حدد السيرفر أو قاعدة البيانات أو الخدمة المتأثرة");
   if (details.length < 10) fail("اكتب تفاصيل المشكلة الطارئة وخطواتها بوضوح");
   if (!tester_id) fail("اختيار مسؤول الاختبار إجباري في الدعم الفوري");
   if (!developer_id) fail("اختيار المطور إجباري في الدعم الفوري");
@@ -180,7 +183,7 @@ export async function createInstantSupportAction(formData: FormData) {
     ticket_kind: "instant_support",
     priority: "critical",
     urgent_reason: details,
-    affected_service,
+    affected_service: visible("affected_service") && affected_service ? affected_service : null,
     tester_id,
     developer_id,
     is_urgent: true,

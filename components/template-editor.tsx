@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { deleteTemplateAction, previewTemplateAction, upsertTemplateAction } from "@/app/actions/admin";
 import { BLOCK_LABELS } from "@/lib/templates";
-import type { TemplateBlocks } from "@/lib/types";
+import type { TemplateBlockKey, TemplateBlocks } from "@/lib/types";
 
 const VARS = [
   "{{ticket.code}}", "{{ticket.client_name}}", "{{ticket.title}}", "{{ticket.request_type}}",
@@ -21,12 +21,15 @@ export function TemplateEditor({ id, initialName, initialSubject, initialBody, i
   const [name, setName] = useState(initialName);
   const [subject, setSubject] = useState(initialSubject);
   const [body, setBody] = useState(initialBody);
-  const [blocks, setBlocks] = useState<TemplateBlocks>(initialBlocks);
+  const allBlockKeys = Object.keys(BLOCK_LABELS) as TemplateBlockKey[];
+  const initialOrder = [...(initialBlocks.order ?? []), ...allBlockKeys.filter((k) => !(initialBlocks.order ?? []).includes(k))];
+  const [blocks, setBlocks] = useState<TemplateBlocks>({ ...initialBlocks, order: initialOrder });
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const toggle = (k: keyof TemplateBlocks) => setBlocks((b) => ({ ...b, [k]: !b[k] }));
+  const toggle = (k: TemplateBlockKey) => setBlocks((b) => ({ ...b, [k]: !b[k] }));
 
   return (
     <div className="grid gap-4 md:grid-cols-2">
@@ -52,8 +55,14 @@ export function TemplateEditor({ id, initialName, initialSubject, initialBody, i
             الأقسام التلقائية للإيميل — فعّل ما يظهر وأطفئ ما يختفي (المحتوى يُبنى من بيانات التذكرة):
           </p>
           <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
-            {(Object.keys(BLOCK_LABELS) as (keyof TemplateBlocks)[]).map((k) => (
-              <label key={k} className="flex cursor-pointer items-center gap-2 rounded-md bg-white px-2.5 py-1.5 text-sm shadow-sm">
+            {(blocks.order ?? initialOrder).map((k, i) => (
+              <label
+                key={k} draggable onDragStart={() => setDragIndex(i)} onDragOver={(e) => e.preventDefault()}
+                onDrop={() => { if (dragIndex !== null && dragIndex !== i) { const n = [...(blocks.order ?? initialOrder)]; const [x] = n.splice(dragIndex, 1); n.splice(i, 0, x); setBlocks((b) => ({ ...b, order: n })); } setDragIndex(null); }}
+                onDragEnd={() => setDragIndex(null)}
+                className={`flex cursor-pointer items-center gap-2 rounded-md bg-white px-2.5 py-1.5 text-sm shadow-sm ${dragIndex === i ? "opacity-50" : ""}`}
+              >
+                <span className="cursor-grab text-slate-400">⋮⋮</span><span className="text-[10px] text-slate-400">{i + 1}</span>
                 <input type="checkbox" checked={blocks[k]} onChange={() => toggle(k)} className="h-4 w-4 accent-blue-600" />
                 <span className={blocks[k] ? "font-semibold" : "text-slate-400 line-through"}>{BLOCK_LABELS[k]}</span>
               </label>

@@ -27,6 +27,7 @@ export async function GET(req: Request) {
   const body: Record<string, unknown> = {
     code: t.code,
     status_label: STATUS_LABELS[t.dev_status],
+    display_order: cfg.order ?? [],
   };
   if (cfg.show_last_change) body.last_status_change = t.last_status_change;
   if (cfg.show_client) body.client_name = t.client_name;

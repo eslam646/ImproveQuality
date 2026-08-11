@@ -6,7 +6,7 @@ import { getRepo } from "@/lib/db";
 import { renderBlocks, renderTemplate, templateVars, wrapEmail } from "@/lib/templates";
 import { sendMail } from "@/lib/email";
 import { settingsSchema, staffSchema, templateSchema } from "@/lib/validators";
-import type { CustomFieldCfg, CustomFieldType, FormFieldCfg, Role, RolePermissions, TemplateBlocks, TrackPageCfg } from "@/lib/types";
+import type { CustomFieldCfg, CustomFieldType, FormFieldCfg, Role, RolePermissions, TemplateBlocks, TrackPageCfg, UrgentFormFieldCfg } from "@/lib/types";
 import { DEFAULT_TEMPLATE_BLOCKS } from "@/lib/types";
 import { isEmail } from "@/lib/util";
 import { generatePrivateToken, hashPrivateToken } from "@/lib/private-links";
@@ -78,6 +78,16 @@ export async function saveFormFieldsAction(fields: FormFieldCfg[]) {
   revalidatePath("/settings");
   revalidatePath("/tickets/new");
   revalidatePath("/submit");
+  return { ok: true };
+}
+
+export async function saveUrgentFormFieldsAction(fields: UrgentFormFieldCfg[]) {
+  await requireStaff(["admin"]);
+  const repo = await getRepo();
+  const safe = fields.map((f) => f.locked ? { ...f, visible: true, required: true } : f);
+  await repo.settingsSet({ urgent_form_fields: safe });
+  revalidatePath("/settings");
+  revalidatePath("/instant-support");
   return { ok: true };
 }
 

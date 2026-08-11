@@ -1,5 +1,5 @@
 import { cx } from "@/lib/util";
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 
 export function Card({ title, children, className, actions }: { title?: string; children: ReactNode; className?: string; actions?: ReactNode }) {
   return (
@@ -33,9 +33,9 @@ export function Button({ children, variant = "primary", className, ...rest }: Re
   );
 }
 
-export function Field({ label, children, hint }: { label: string; children: ReactNode; hint?: string }) {
+export function Field({ label, children, hint, style, className }: { label: string; children: ReactNode; hint?: string; style?: CSSProperties; className?: string }) {
   return (
-    <label className="block">
+    <label className={cx("block", className)} style={style}>
       <span className="mb-1 block text-sm font-semibold text-slate-700">{label}</span>
       {children}
       {hint && <span className="mt-1 block text-xs text-slate-500">{hint}</span>}

@@ -243,7 +243,8 @@ export interface Settings {
   sender_email: string;
   stale_hours: number;
   base_url: string;
-  form_fields: FormFieldCfg[]; // مصمم النماذج: إظهار/إلزام كل حقل
+  form_fields: FormFieldCfg[]; // نموذج الطلب العادي/العام — ترتيب المصفوفة هو ترتيب العرض
+  urgent_form_fields: UrgentFormFieldCfg[]; // نموذج الدعم الفوري — إظهار/إلزام/ترتيب
   role_permissions: RolePermissions; // مصفوفة صلاحيات الأدوار
   custom_fields: CustomFieldCfg[];   // منشئ الحقول المخصصة
   track_cfg: TrackPageCfg;           // ماذا تعرض صفحة الاستعلام العامة
@@ -268,6 +269,24 @@ export interface FormFieldCfg {
   required: boolean;
 }
 
+export type UrgentFormFieldKey = "client" | "creator" | "title" | "affected_service" | "details" | "tester" | "developer";
+export interface UrgentFormFieldCfg {
+  key: UrgentFormFieldKey;
+  label: string;
+  visible: boolean;
+  required: boolean;
+  locked?: boolean; // حقول جوهرية لدورة العمل لا يمكن إخفاؤها
+}
+export const DEFAULT_URGENT_FORM_FIELDS: UrgentFormFieldCfg[] = [
+  { key: "client", label: "العميل", visible: true, required: true, locked: true },
+  { key: "creator", label: "مدخل البيانات (مقدم الطلب)", visible: true, required: true, locked: true },
+  { key: "title", label: "عنوان المشكلة الطارئة", visible: true, required: true, locked: true },
+  { key: "affected_service", label: "السيرفر / قاعدة البيانات / الخدمة المتأثرة", visible: true, required: true },
+  { key: "details", label: "تفاصيل المشكلة الطارئة", visible: true, required: true, locked: true },
+  { key: "tester", label: "مسؤول الاختبار", visible: true, required: true, locked: true },
+  { key: "developer", label: "المطور", visible: true, required: true, locked: true },
+];
+
 export const DEFAULT_FORM_FIELDS: FormFieldCfg[] = [
   { key: "client", label: "اسم العميل", visible: true, required: true },
   { key: "client_contact", label: "بريد مدخل البيانات", visible: false, required: false },
@@ -290,7 +309,10 @@ export interface Client {
 }
 
 // أقسام قالب البريد القابلة للتفعيل/التعطيل من قبل الأدمن
+export type TemplateBlockKey = "status" | "client" | "title" | "request_type" | "priority" | "creator" | "tester" | "developer" | "estimation" | "affected_service" | "details" | "note" | "track_button" | "update_button";
+
 export interface TemplateBlocks {
+  order?: TemplateBlockKey[];
   status: boolean;           // شارة الحالة الحالية
   client: boolean;           // اسم العميل
   title: boolean;            // عنوان الطلب
@@ -308,6 +330,7 @@ export interface TemplateBlocks {
 }
 
 export const DEFAULT_TEMPLATE_BLOCKS: TemplateBlocks = {
+  order: ["status", "client", "title", "request_type", "priority", "creator", "tester", "developer", "estimation", "affected_service", "details", "note", "track_button", "update_button"],
   status: true,
   client: true,
   title: true,
@@ -364,7 +387,13 @@ export interface CustomFieldCfg {
 }
 
 // ===== تحكم صفحة الاستعلام العامة =====
+export type TrackPageFieldKey =
+  | "show_estimation" | "show_timeline" | "show_last_change" | "show_client" | "show_title"
+  | "show_request_type" | "show_ticket_kind" | "show_priority" | "show_creator" | "show_tester"
+  | "show_developer" | "show_assignment_status" | "show_affected_service" | "show_custom";
+
 export interface TrackPageCfg {
+  order?: TrackPageFieldKey[];
   show_estimation: boolean;
   show_timeline: boolean;
   show_last_change: boolean;
@@ -382,6 +411,7 @@ export interface TrackPageCfg {
 }
 
 export const DEFAULT_TRACK_CFG: TrackPageCfg = {
+  order: ["show_title", "show_ticket_kind", "show_request_type", "show_client", "show_creator", "show_tester", "show_developer", "show_assignment_status", "show_priority", "show_affected_service", "show_estimation", "show_last_change", "show_timeline", "show_custom"],
   show_estimation: true,
   show_timeline: true,
   show_last_change: true,

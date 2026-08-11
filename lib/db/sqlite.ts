@@ -4,9 +4,9 @@ import path from "path";
 import type { Repo, TicketFilter } from "./index";
 import type {
   AuditEntry, AutomationRule, Attachment, Client, CustomFieldCfg, EmailLog, EmailTemplate, FormFieldCfg, Job, Notification,
-  PermKey, PrivateAccessLink, Role, RolePermissions, Settings, Staff, Ticket, TicketAssignment, TicketEvent, TrackPageCfg,
+  PermKey, PrivateAccessLink, Role, RolePermissions, Settings, Staff, Ticket, TicketAssignment, TicketEvent, TrackPageCfg, UrgentFormFieldCfg,
 } from "../types";
-import { DEFAULT_FORM_FIELDS, DEFAULT_ROLE_PERMISSIONS, DEFAULT_TRACK_CFG } from "../types";
+import { DEFAULT_FORM_FIELDS, DEFAULT_ROLE_PERMISSIONS, DEFAULT_TRACK_CFG, DEFAULT_URGENT_FORM_FIELDS } from "../types";
 import { SEED_RULES, SEED_STAFF, SEED_TEMPLATES, SEED_TICKETS } from "../seed";
 import { genId, genTicketCode, nowIso } from "../util";
 
@@ -195,7 +195,18 @@ export function createSqliteRepo(): Repo {
     if (m.form_fields) {
       try {
         const saved = JSON.parse(m.form_fields) as FormFieldCfg[];
-        form_fields = DEFAULT_FORM_FIELDS.map((d) => ({ ...d, ...(saved.find((s) => s.key === d.key) ?? {}) }));
+        const known = saved.filter((s) => DEFAULT_FORM_FIELDS.some((d) => d.key === s.key))
+          .map((s) => ({ ...DEFAULT_FORM_FIELDS.find((d) => d.key === s.key)!, ...s }));
+        form_fields = [...known, ...DEFAULT_FORM_FIELDS.filter((d) => !known.some((s) => s.key === d.key))];
+      } catch { /* الافتراضي */ }
+    }
+    let urgent_form_fields: UrgentFormFieldCfg[] = DEFAULT_URGENT_FORM_FIELDS;
+    if (m.urgent_form_fields) {
+      try {
+        const saved = JSON.parse(m.urgent_form_fields) as UrgentFormFieldCfg[];
+        const known = saved.filter((s) => DEFAULT_URGENT_FORM_FIELDS.some((d) => d.key === s.key))
+          .map((s) => ({ ...DEFAULT_URGENT_FORM_FIELDS.find((d) => d.key === s.key)!, ...s }));
+        urgent_form_fields = [...known, ...DEFAULT_URGENT_FORM_FIELDS.filter((d) => !known.some((s) => s.key === d.key))];
       } catch { /* الافتراضي */ }
     }
     // مصفوفة الصلاحيات: دمج المحفوظ فوق الافتراضي
@@ -232,6 +243,7 @@ export function createSqliteRepo(): Repo {
       stale_hours: parseInt(m.stale_hours ?? "24", 10) || 24,
       base_url: (process.env.APP_BASE_URL || m.base_url || "http://localhost:3000").replace(/\/$/, ""),
       form_fields,
+      urgent_form_fields,
       role_permissions,
       custom_fields,
       track_cfg,
@@ -306,6 +318,7 @@ export function createSqliteRepo(): Repo {
       if (patch.stale_hours !== undefined) ins.run("stale_hours", String(patch.stale_hours));
       if (patch.base_url !== undefined) ins.run("base_url", patch.base_url);
       if (patch.form_fields !== undefined) ins.run("form_fields", JSON.stringify(patch.form_fields));
+      if (patch.urgent_form_fields !== undefined) ins.run("urgent_form_fields", JSON.stringify(patch.urgent_form_fields));
       if (patch.allow_track !== undefined) ins.run("allow_track", patch.allow_track ? "1" : "0");
       if (patch.allow_public_update !== undefined) ins.run("allow_public_update", patch.allow_public_update ? "1" : "0");
       if (patch.role_permissions !== undefined) ins.run("role_permissions", JSON.stringify(patch.role_permissions));

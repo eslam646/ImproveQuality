@@ -1,10 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import type { TrackPageCfg } from "@/lib/types";
+import type { TrackPageCfg, TrackPageFieldKey } from "@/lib/types";
 import { saveTrackCfgAction } from "@/app/actions/admin";
 
-const LABELS: Record<keyof TrackPageCfg, { label: string; hint: string }> = {
+const LABELS: Record<TrackPageFieldKey, { label: string; hint: string }> = {
   show_estimation: { label: "تقدير وقت التنفيذ", hint: "الأيام/الساعات المقدرة للطلب" },
   show_timeline: { label: "مسار الحالة", hint: "خط زمني بكل تغييرات الحالة" },
   show_last_change: { label: "تاريخ آخر تحديث", hint: "متى تغيّرت الحالة آخر مرة" },
@@ -22,7 +22,10 @@ const LABELS: Record<keyof TrackPageCfg, { label: string; hint: string }> = {
 };
 
 export function TrackCfgEditor({ initial }: { initial: TrackPageCfg }) {
-  const [cfg, setCfg] = useState<TrackPageCfg>(initial);
+  const allKeys = Object.keys(LABELS) as TrackPageFieldKey[];
+  const initialOrder = [...(initial.order ?? []), ...allKeys.filter((k) => !(initial.order ?? []).includes(k))];
+  const [cfg, setCfg] = useState<TrackPageCfg>({ ...initial, order: initialOrder });
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
 
@@ -32,13 +35,17 @@ export function TrackCfgEditor({ initial }: { initial: TrackPageCfg }) {
         هذه الصفحة قراءة فقط وآمنة: الكود نفسه هو المفتاح (لا تسريب لبيانات التواصل إطلاقاً). اختر ما يظهر فيها:
       </p>
       <div className="space-y-2">
-        {(Object.keys(LABELS) as (keyof TrackPageCfg)[]).map((k) => (
-          <label key={k} className="flex cursor-pointer items-center gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2.5">
+        {(cfg.order ?? initialOrder).map((k, i) => (
+          <label
+            key={k} draggable onDragStart={() => setDragIndex(i)} onDragOver={(e) => e.preventDefault()}
+            onDrop={() => { if (dragIndex !== null && dragIndex !== i) { const n = [...(cfg.order ?? initialOrder)]; const [x] = n.splice(dragIndex, 1); n.splice(i, 0, x); setCfg((c) => ({ ...c, order: n })); } setDragIndex(null); }}
+            onDragEnd={() => setDragIndex(null)}
+            className={`flex cursor-pointer items-center gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2.5 ${dragIndex === i ? "opacity-50" : ""}`}
+          >
+            <span className="cursor-grab text-lg text-slate-400">⋮⋮</span>
+            <span className="w-6 text-center text-xs font-bold text-slate-400">{i + 1}</span>
             <input type="checkbox" checked={cfg[k]} onChange={() => setCfg((c) => ({ ...c, [k]: !c[k] }))} className="h-4 w-4 accent-blue-600" />
-            <span className="flex-1">
-              <b className="text-sm">{LABELS[k].label}</b>
-              <span className="mr-2 text-xs text-slate-400">{LABELS[k].hint}</span>
-            </span>
+            <span className="flex-1"><b className="text-sm">{LABELS[k].label}</b><span className="mr-2 text-xs text-slate-400">{LABELS[k].hint}</span></span>
             <span className={`text-xs font-bold ${cfg[k] ? "text-green-600" : "text-slate-300"}`}>{cfg[k] ? "يظهر" : "مخفي"}</span>
           </label>
         ))}

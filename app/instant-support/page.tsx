@@ -13,10 +13,23 @@ export default async function InstantSupportPage({
   const actor = await requirePerm("new_ticket");
   const sp = await searchParams;
   const repo = await getRepo();
-  const [staff, clients] = await Promise.all([repo.staffList(true), repo.clientsList(true)]);
+  const [staff, clients, settings] = await Promise.all([repo.staffList(true), repo.clientsList(true), repo.settingsGet()]);
   const testers = staff.filter((s) => s.role === "tester");
   const developers = staff.filter((s) => s.role === "developer");
   const requesters = staff.filter((s) => s.role === "support" || s.role === "admin");
+  const renderUrgentField = (f: (typeof settings.urgent_form_fields)[number]) => {
+    if (!f.visible) return null;
+    const label = `${f.label}${f.required ? " *" : ""}`;
+    switch (f.key) {
+      case "client": return <Field label={label} hint="اختر عميلاً مسجلاً، أو اكتب اسماً جديداً"><select name="client_id" required={f.required} className={selectCls} defaultValue=""><option value="">— اختر العميل —</option>{clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select><input name="client_name" className={`${inputCls} mt-2`} placeholder="أو اكتب اسم العميل" /></Field>;
+      case "creator": return <Field label={label} hint="يُستخدم اسمه وبريده ديناميكيًا في الإيميلات والسجل"><select name="creator_id" required={f.required} className={selectCls} defaultValue={requesters.some((r) => r.id === actor.id) ? actor.id : (requesters[0]?.id ?? "")}><option value="" disabled>اختر مدخل البيانات…</option>{requesters.map((r) => <option key={r.id} value={r.id}>{r.name} — {r.email}</option>)}</select></Field>;
+      case "title": return <Field label={label} hint="عنوان مختصر يظهر في الجدول والإيميلات"><input name="title" required={f.required} minLength={3} maxLength={180} className={inputCls} placeholder="مثال: توقف خدمة الفواتير على سيرفر الإنتاج" /></Field>;
+      case "affected_service": return <Field label={label}><input name="affected_service" required={f.required} minLength={f.required ? 2 : 0} className={inputCls} placeholder="مثال: Production API / SQL Server / خدمة الفواتير" /></Field>;
+      case "details": return <Field label={label} hint="اكتب ما حدث وتأثيره والخطوات التي جُربت وما المطلوب فوراً"><textarea name="details" required={f.required} minLength={10} rows={9} className={inputCls} placeholder="السيرفر متوقف منذ الساعة… والخطوات التي تم تنفيذها…" /></Field>;
+      case "tester": return <Field label={label} hint="سيصله إيميل تكليف فوري"><select name="tester_id" required={f.required} className={selectCls} defaultValue=""><option value="" disabled>اختر التيست…</option>{testers.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select></Field>;
+      case "developer": return <Field label={label} hint="سيصله إيميل بعد إسناد التيست"><select name="developer_id" required={f.required} className={selectCls} defaultValue=""><option value="" disabled>اختر المطور…</option>{developers.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}</select></Field>;
+    }
+  };
 
   return (
     <div className="mx-auto max-w-2xl space-y-5">
@@ -32,47 +45,7 @@ export default async function InstantSupportPage({
 
       <Card title="بيانات المشكلة الطارئة">
         <form action={createInstantSupportAction} className="space-y-4">
-          <Field label="العميل *" hint="اختر عميلاً مسجلاً، أو اكتب اسماً جديداً">
-            <select name="client_id" className={selectCls} defaultValue="">
-              <option value="">— اختر العميل —</option>
-              {clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
-            <input name="client_name" className={`${inputCls} mt-2`} placeholder="أو اكتب اسم العميل" />
-          </Field>
-
-          <Field label="مدخل البيانات (مقدم الطلب) *" hint="يُستخدم اسمه وبريده ديناميكيًا في الإيميلات والسجل">
-            <select name="creator_id" required className={selectCls} defaultValue={requesters.some((r) => r.id === actor.id) ? actor.id : (requesters[0]?.id ?? "")}>
-              <option value="" disabled>اختر مدخل البيانات…</option>
-              {requesters.map((r) => <option key={r.id} value={r.id}>{r.name} — {r.email}</option>)}
-            </select>
-          </Field>
-
-          <Field label="عنوان المشكلة الطارئة *" hint="عنوان مختصر يظهر في الجدول والإيميلات">
-            <input name="title" required minLength={3} maxLength={180} className={inputCls} placeholder="مثال: توقف خدمة الفواتير على سيرفر الإنتاج" />
-          </Field>
-
-          <Field label="السيرفر / قاعدة البيانات / الخدمة المتأثرة *">
-            <input name="affected_service" required minLength={2} className={inputCls} placeholder="مثال: Production API / SQL Server / خدمة الفواتير" />
-          </Field>
-
-          <Field label="تفاصيل المشكلة الطارئة *" hint="اكتب ما حدث وتأثيره والخطوات التي جُربت وما المطلوب فوراً">
-            <textarea name="details" required minLength={10} rows={9} className={inputCls} placeholder="مثال: السيرفر متوقف منذ الساعة… والخدمة المتأثرة… والخطوات التي تم تنفيذها…" />
-          </Field>
-
-          <div className="grid gap-4 md:grid-cols-2">
-            <Field label="مسؤول الاختبار *" hint="سيصله إيميل تكليف فوري">
-              <select name="tester_id" required className={selectCls} defaultValue="">
-                <option value="" disabled>اختر التيست…</option>
-                {testers.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-              </select>
-            </Field>
-            <Field label="المطور *" hint="سيصله إيميل بعد إسناد التيست">
-              <select name="developer_id" required className={selectCls} defaultValue="">
-                <option value="" disabled>اختر المطور…</option>
-                {developers.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
-              </select>
-            </Field>
-          </div>
+          {settings.urgent_form_fields.map((f) => <div key={f.key}>{renderUrgentField(f)}</div>)}
 
           <div className="rounded-xl border border-blue-100 bg-blue-50 p-3 text-sm text-blue-800">
             سيُسجل اسم مدخل البيانات المختار ويصل البريد إليه وإلى المسؤولين وفق قواعد الأتمتة. العميل نفسه لا يحتاج بريدًا.

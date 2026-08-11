@@ -20,6 +20,11 @@ export function FormDesigner({ initial }: { initial: FormFieldCfg[] }) {
   const [fields, setFields] = useState<FormFieldCfg[]>(initial);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
+  const move = (from: number, to: number) => {
+    if (from === to) return;
+    setFields((old) => { const n = [...old]; const [item] = n.splice(from, 1); n.splice(to, 0, item); return n; });
+  };
 
   const update = (key: string, patch: Partial<FormFieldCfg>) =>
     setFields((fs) => fs.map((f) => {
@@ -38,14 +43,21 @@ export function FormDesigner({ initial }: { initial: FormFieldCfg[] }) {
         <table className="w-full text-sm">
           <thead className="bg-slate-50 text-slate-600">
             <tr>
+              <th className="w-16 px-3 py-2 text-center font-bold">الترتيب</th>
               <th className="px-3 py-2 text-right font-bold">الحقل</th>
               <th className="px-3 py-2 text-center font-bold">ظاهر</th>
               <th className="px-3 py-2 text-center font-bold">إجباري</th>
             </tr>
           </thead>
           <tbody>
-            {fields.map((f) => (
-              <tr key={f.key} className="border-t border-slate-100">
+            {fields.map((f, i) => (
+              <tr
+                key={f.key} draggable
+                onDragStart={() => setDragIndex(i)} onDragOver={(e) => e.preventDefault()}
+                onDrop={() => { if (dragIndex !== null) move(dragIndex, i); setDragIndex(null); }} onDragEnd={() => setDragIndex(null)}
+                className={`border-t border-slate-100 ${dragIndex === i ? "opacity-50" : ""}`}
+              >
+                <td className="cursor-grab px-3 py-2 text-center text-slate-400">⋮⋮ <b className="text-xs">{i + 1}</b></td>
                 <td className="px-3 py-2">
                   <b>{f.label}</b>
                   <span className="mr-2 text-xs text-slate-400">{SCOPE_HINT[f.key]}</span>
