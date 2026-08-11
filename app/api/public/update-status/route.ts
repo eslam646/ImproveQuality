@@ -2,8 +2,8 @@ import { NextResponse } from "next/server";
 import { getRepo } from "@/lib/db";
 import { changeStatusOp } from "@/lib/ops";
 import { publicUpdateSchema } from "@/lib/validators";
-import { allowedTransitions, NOTE_REQUIRED_STATUSES, ROLE_LABELS, STATUS_LABELS } from "@/lib/labels";
-import { currentStaff } from "@/lib/auth";
+import { allowedTransitions, ALL_STATUSES, NOTE_REQUIRED_STATUSES, ROLE_LABELS, STATUS_LABELS } from "@/lib/labels";
+import { currentStaff, permissionsForStaff } from "@/lib/auth";
 import { clientIp, rateLimit } from "@/lib/ratelimit";
 
 // نموذج التحديث العام: معبأ مسبقاً بالكود، والقفل مفروض هنا في الخادم
@@ -24,18 +24,18 @@ export async function POST(req: Request) {
   const t = await repo.ticketByCode(parsed.data.code);
   if (!t) return NextResponse.json({ error: "كود الطلب غير موجود" }, { status: 404 });
   const actor = await currentStaff();
-  if (!actor || actor.role === "support") {
-    return NextResponse.json({ error: "مدخل البيانات في وضع القراءة فقط ولا يملك تغيير الحالة" }, { status: 403 });
-  }
-  const assigned = actor.role === "admin"
-    || (actor.role === "tester" && t.tester_id === actor.id)
-    || (actor.role === "developer" && t.developer_id === actor.id);
-  if (!assigned) return NextResponse.json({ error: "الطلب غير مسند إليك" }, { status: 403 });
+  if (!actor) return NextResponse.json({ error: "يجب تسجيل الدخول" }, { status: 401 });
+  const perms = await permissionsForStaff(actor);
+  if (!perms.change_status) return NextResponse.json({ error: "صلاحية تغيير الحالة غير مفعلة لك" }, { status: 403 });
+  const related = perms.view_all_tickets
+    || (perms.view_own_created && t.created_by === actor.id)
+    || (perms.view_assigned_tickets && (t.tester_id === actor.id || t.developer_id === actor.id));
+  if (!related) return NextResponse.json({ error: "لا تملك صلاحية على هذا الطلب" }, { status: 403 });
   if (actor.role === "tester" && t.tester_assignment_status !== "accepted")
     return NextResponse.json({ error: "يجب قبول تكليف الاختبار أولاً" }, { status: 403 });
   if (actor.role === "developer" && t.developer_assignment_status !== "accepted")
     return NextResponse.json({ error: "يجب قبول تكليف التطوير أولاً" }, { status: 403 });
-  const allowed = allowedTransitions(actor.role, t.dev_status);
+  const allowed = actor.role === "support" ? ALL_STATUSES.filter((s) => s !== t.dev_status) : allowedTransitions(actor.role, t.dev_status);
   if (!allowed.includes(parsed.data.dev_status as never)) {
     return NextResponse.json({ error: "تحويل الحالة غير مسموح لدورك أو للحالة الحالية" }, { status: 403 });
   }

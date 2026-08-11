@@ -1,13 +1,13 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { getRepo } from "@/lib/db";
-import { requireStaff, canManage, isAdmin } from "@/lib/auth";
+import { requireStaff, permissionsForStaff } from "@/lib/auth";
 import {
   addNoteAction, assignDeveloperAction, assignTesterAction,
   declineAssignmentAction, respondToAssignmentAction, setEstimationAction,
 } from "@/app/actions/tickets";
 import { Badge, Button, Card, Field, Msg, selectCls, inputCls } from "@/components/ui";
-import { allowedTransitions, ASSIGNMENT_STATUS_LABELS, REQUEST_TYPE_LABELS, ROLE_LABELS, STATUS_COLORS, STATUS_LABELS } from "@/lib/labels";
+import { allowedTransitions, ALL_STATUSES, ASSIGNMENT_STATUS_LABELS, REQUEST_TYPE_LABELS, ROLE_LABELS, STATUS_COLORS, STATUS_LABELS } from "@/lib/labels";
 import { fmtDate, parseFileRef } from "@/lib/util";
 import { AttachmentUpload } from "@/components/attachment-upload";
 import { StatusChangeForm } from "@/components/status-change-form";
@@ -49,15 +49,15 @@ export default async function TicketDetailsPage({
   const { code } = await params;
   const sp = await searchParams;
   const repo = await getRepo();
+  const perms = await permissionsForStaff(actor);
   const ticket = await repo.ticketByCode(code);
   if (!ticket) notFound();
 
-  // عزل الرؤية: الديف يرى تذاكره فقط — ومدخل البيانات يرى ما يخصّه أو الجديد غير المُسنَد
-  if (actor.role === "developer" && ticket.developer_id !== actor.id) {
-    redirect("/dashboard?denied=ticket");
-  }
-  if (actor.role === "support" && ticket.created_by !== actor.id) {
-    redirect("/dashboard?denied=ticket");
+  // نطاق الرؤية ديناميكي من الإعدادات + الاستثناء الفردي
+  if (!perms.view_all_tickets) {
+    const ownCreated = perms.view_own_created && ticket.created_by === actor.id;
+    const assigned = perms.view_assigned_tickets && (ticket.tester_id === actor.id || ticket.developer_id === actor.id);
+    if (!ownCreated && !assigned) redirect("/dashboard?denied=ticket");
   }
 
   const settings = await repo.settingsGet();
@@ -72,26 +72,27 @@ export default async function TicketDetailsPage({
   const [events, attachments, emailLog, auditEntries] = await Promise.all([
     repo.eventList(ticket.id),
     repo.attachmentList(ticket.id),
-    isAdmin(actor) ? repo.emailLogList(1, 10, ticket.id) : Promise.resolve({ rows: [], total: 0 }),
-    isAdmin(actor) ? repo.auditList("ticket", ticket.id) : Promise.resolve([]),
+    perms.emails ? repo.emailLogList(1, 10, ticket.id) : Promise.resolve({ rows: [], total: 0 }),
+    perms.view_audit ? repo.auditList("ticket", ticket.id) : Promise.resolve([]),
   ]);
 
-  const manage = canManage(actor);
   const isAssignedTester = ticket.tester_id === actor.id;
   const isAssignedDev = ticket.developer_id === actor.id;
   const myAssignmentStatus = isAssignedTester
     ? (ticket.tester_assignment_status ?? "unassigned")
     : isAssignedDev ? (ticket.developer_assignment_status ?? "unassigned") : null;
-  const needsAssignmentResponse = (isAssignedTester || isAssignedDev) && ["pending", "unassigned", "reassigned"].includes(myAssignmentStatus ?? "");
-  // مدخل البيانات View-only بعد الإنشاء؛ الرفع للأدمن أو المسؤول المسند فقط
-  const canUpload = actor.role === "admin" || isAssignedTester || isAssignedDev;
-  const canAssignDev = manage || (actor.role === "tester" && isAssignedTester);
-  const transitions = (actor.role === "tester" || actor.role === "developer") && myAssignmentStatus !== "accepted"
+  const needsAssignmentResponse = perms.assignment_decision && (isAssignedTester || isAssignedDev) && ["pending", "unassigned", "reassigned"].includes(myAssignmentStatus ?? "");
+  const canAssignTester = perms.assign_tester;
+  const canAssignDev = perms.assign_developer;
+  const canEstimate = perms.set_estimation;
+  const canUpload = perms.upload_attachment && (perms.view_all_tickets || isAssignedTester || isAssignedDev);
+  const acceptedForRole = actor.role === "tester" ? ticket.tester_assignment_status === "accepted" : actor.role === "developer" ? ticket.developer_assignment_status === "accepted" : true;
+  const transitions = !perms.change_status || !acceptedForRole
     ? []
-    : allowedTransitions(actor.role, ticket.dev_status);
+    : actor.role === "support" ? ALL_STATUSES.filter((s) => s !== ticket.dev_status) : allowedTransitions(actor.role, ticket.dev_status);
   const noteLabel = actor.role === "developer" ? "ملاحظات الديف" : actor.role === "tester" ? "ملاحظات التيست" : "ملاحظة مدخل البيانات";
-  const isRequester = actor.role === "support" && ticket.created_by === actor.id;
-  const hasActions = manage || isRequester || isAssignedTester || isAssignedDev || transitions.length > 0;
+  const canNote = perms.add_note && (perms.view_all_tickets || ticket.created_by === actor.id || isAssignedTester || isAssignedDev);
+  const hasActions = canAssignTester || canAssignDev || canEstimate || canNote || isAssignedTester || isAssignedDev || transitions.length > 0;
 
   return (
     <div className="mx-auto max-w-5xl space-y-5">
@@ -207,7 +208,7 @@ export default async function TicketDetailsPage({
                   </div>
                 )}
 
-                {manage && (
+                {canAssignTester && (
                   <form action={assignTesterAction} className="space-y-2 rounded-xl border border-purple-100 bg-purple-50/40 p-3">
                     <input type="hidden" name="code" value={ticket.code} />
                     <Field label="1) إسناد / إعادة إسناد فريق الاختبار (التيست)" hint="التيست يستلم الطلب أولاً ثم يسلّمه للمطوّر — يُرسل إيميل للتيست بالتكليف">
@@ -228,7 +229,7 @@ export default async function TicketDetailsPage({
                   ticket.tester_id ? (
                     <form action={assignDeveloperAction} className="space-y-2 rounded-xl border border-blue-100 bg-blue-50/40 p-3">
                       <input type="hidden" name="code" value={ticket.code} />
-                      <Field label="2) إسناد / إعادة إسناد المطوّر" hint={`يُرسل إيميل للمطور + نسخة لمدخل البيانات — ${manage ? "يمكن للتيست المسند أيضاً تسليمها للمطور" : "أنت التيست المسند — سلّمها للمطور المناسب"}`}>
+                      <Field label="2) إسناد / إعادة إسناد المطوّر" hint={`يُرسل إيميل للمطور + نسخة لمدخل البيانات — ${canAssignTester ? "لديك صلاحية إسناد المطور" : "سلّمها للمطور المناسب"}`}>
                         <select name="developer_id" required defaultValue={ticket.developer_id ?? ""} className={selectCls}>
                           <option value="" disabled>اختر المطور…</option>
                           {devs.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
@@ -247,7 +248,7 @@ export default async function TicketDetailsPage({
                   )
                 )}
 
-                {manage && (
+                {canEstimate && (
                   <form action={setEstimationAction} className="flex flex-wrap items-end gap-2 rounded-xl border border-slate-200 bg-slate-50/60 p-3">
                     <input type="hidden" name="code" value={ticket.code} />
                     <span className="text-sm font-semibold text-slate-700">⏱️ تعديل التقدير:</span>
@@ -257,7 +258,7 @@ export default async function TicketDetailsPage({
                   </form>
                 )}
 
-                {!!ticket.is_urgent && (isAssignedTester || isAssignedDev) && myAssignmentStatus === "accepted" && (
+                {!!ticket.is_urgent && perms.assignment_decision && (isAssignedTester || isAssignedDev) && myAssignmentStatus === "accepted" && (
                   <form action={declineAssignmentAction} className="space-y-2 rounded-xl border border-rose-200 bg-rose-50 p-3">
                     <input type="hidden" name="code" value={ticket.code} />
                     <Field label={`الاعتذار عن الدعم الفوري (أنت ${isAssignedTester ? "التيست" : "المطوّر"} المسند)`} hint="خاص بالدعم الفوري فقط — السبب إجباري، ويصل إيميل لمقدم الطلب والإدارة ثم تعود المهمة لإعادة الإسناد">
@@ -273,13 +274,13 @@ export default async function TicketDetailsPage({
                   </div>
                 )}
 
-                <form action={addNoteAction} className="space-y-2 border-t border-slate-100 pt-4">
+                {canNote && <form action={addNoteAction} className="space-y-2 border-t border-slate-100 pt-4">
                   <input type="hidden" name="code" value={ticket.code} />
                   <Field label={`${noteLabel} / رد`} hint="مقدم الطلب والتيست والمطور يكتبون ما يريدون هنا؛ تُرسل الملاحظة بالإيميل لكل المسؤولين عن الطلب ما عدا كاتبها، مع التاريخ والتوقيت">
                     <textarea name="note" required minLength={2} rows={3} placeholder="اكتب ملاحظتك أو طلبك أو ردك بالتفصيل…" className={inputCls} />
                   </Field>
                   <Button type="submit" variant="secondary">إرسال الملاحظة للمسؤولين 💬</Button>
-                </form>
+                </form>}
               </div>
             </Card>
           )}
@@ -301,7 +302,7 @@ export default async function TicketDetailsPage({
             <ul className="space-y-4">{events.map((e) => <EventLine key={e.id} e={e} />)}</ul>
           </Card>
 
-          {isAdmin(actor) && auditEntries.length > 0 && (
+          {perms.view_audit && auditEntries.length > 0 && (
             <Card title={`🔐 سجل التدقيق (${auditEntries.length})`}>
               <ul className="space-y-2 text-xs">
                 {auditEntries.slice(0, 30).map((a) => (
@@ -315,7 +316,7 @@ export default async function TicketDetailsPage({
             </Card>
           )}
 
-          {isAdmin(actor) && emailLog.rows.length > 0 && (
+          {perms.emails && emailLog.rows.length > 0 && (
             <Card title="آخر البريد المرسل لهذه التذكرة">
               <ul className="space-y-2 text-xs">
                 {emailLog.rows.map((m) => (

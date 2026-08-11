@@ -1,20 +1,21 @@
 import { NextResponse } from "next/server";
 import { getRepo } from "@/lib/db";
-import { requireStaff, permissionsOf } from "@/lib/auth";
+import { permissionsForStaff, requireActionPermission } from "@/lib/auth";
 import { STATUS_LABELS } from "@/lib/labels";
 
 // تصدير CSV — يحترم صلاحية export_csv من مصفوفة الأدوار،
 // ويضيف أعمدة لكل حقل مخصص يعرّفه الأدمن (بنفس ترتيب منشئ الحقول)
 export async function GET() {
-  const actor = await requireStaff(["admin", "support"]);
-  const perms = await permissionsOf(actor.role);
-  if (!perms.export_csv) {
-    return NextResponse.json({ error: "صلاحية تصدير CSV غير مفعّلة لدورك — راجع مدير النظام" }, { status: 403 });
-  }
+  const actor = await requireActionPermission("export_csv");
+  const perms = await permissionsForStaff(actor);
   const repo = await getRepo();
   const settings = await repo.settingsGet();
   const customFields = settings.custom_fields;
-  const { rows } = await repo.ticketList({ pageSize: 100000 });
+  const { rows: allRows } = await repo.ticketList({ pageSize: 100000 });
+  const rows = perms.view_all_tickets ? allRows : allRows.filter((t) =>
+    (perms.view_own_created && t.created_by === actor.id)
+    || (perms.view_assigned_tickets && (t.tester_id === actor.id || t.developer_id === actor.id))
+  );
 
   const esc = (v: unknown) => `"${String(v ?? "").replaceAll('"', '""')}"`;
   const header = [

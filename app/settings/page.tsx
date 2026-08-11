@@ -8,6 +8,7 @@ import { RolePermissionsEditor } from "@/components/role-permissions-editor";
 import { CustomFieldsBuilder } from "@/components/custom-fields-builder";
 import { TrackCfgEditor } from "@/components/track-cfg-editor";
 import { UrgentFormDesigner } from "@/components/urgent-form-designer";
+import { UserPermissionsEditor } from "@/components/user-permissions-editor";
 
 export const dynamic = "force-dynamic";
 
@@ -20,6 +21,7 @@ export default async function SettingsPage({
   const sp = await searchParams;
   const repo = await getRepo();
   const s = await repo.settingsGet();
+  const staff = await repo.staffList(true);
   const brevo = !!process.env.BREVO_API_KEY;
   const resend = !!process.env.RESEND_API_KEY;
 
@@ -37,6 +39,13 @@ export default async function SettingsPage({
       </Card>
       <Card title="🛡️ صلاحيات الأدوار — ما يظهر لكل دور">
         <RolePermissionsEditor initial={s.role_permissions} />
+      </Card>
+      <Card title="👤 استثناءات صلاحيات كل شخص — بعيدًا عن تعميم الدور">
+        <UserPermissionsEditor
+          staff={staff.map((x) => ({ id: x.id, name: x.name, email: x.email, role: x.role }))}
+          rolePermissions={s.role_permissions}
+          initial={s.user_permissions}
+        />
       </Card>
       <Card title="🧩 الحقول المخصصة — أضف حقولك بلا كود">
         <CustomFieldsBuilder initial={s.custom_fields} />

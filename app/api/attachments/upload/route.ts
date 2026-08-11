@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import fs from "fs/promises";
 import path from "path";
 import { getRepo } from "@/lib/db";
-import { currentStaff } from "@/lib/auth";
+import { currentStaff, permissionsForStaff } from "@/lib/auth";
 import { genId } from "@/lib/util";
 
 const MAX_MB = Math.max(4, Math.min(100, Number(process.env.MAX_ATTACHMENT_MB || 25)));
@@ -22,9 +22,9 @@ export async function POST(req: Request) {
 
   const actor = await currentStaff();
   const initialGuestWindow = ticket.source === "web_guest" && Date.now() - new Date(ticket.created_at).getTime() <= 15 * 60_000;
-  const allowed = actor
-    ? actor.role === "admin" || ticket.tester_id === actor.id || ticket.developer_id === actor.id
-    : initialGuestWindow;
+  const perms = actor ? await permissionsForStaff(actor) : null;
+  const related = actor ? perms?.view_all_tickets || ticket.created_by === actor.id || ticket.tester_id === actor.id || ticket.developer_id === actor.id : false;
+  const allowed = actor ? !!perms?.upload_attachment && !!related : initialGuestWindow;
   if (!allowed) {
     return NextResponse.json({ error: "رفع المرفقات غير مسموح: للأدمن أو المسؤول المسند فقط، أو أثناء إنشاء الطلب العام" }, { status: 403 });
   }

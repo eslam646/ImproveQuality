@@ -81,16 +81,32 @@ export async function requireStaff(roles?: Role[]): Promise<Staff> {
 export async function permissionsOf(role: Role): Promise<Record<PermKey, boolean>> {
   const repo = await getRepo();
   const settings = await repo.settingsGet();
-  return settings.role_permissions[role] ?? DEFAULT_ROLE_PERMISSIONS[role];
+  return { ...DEFAULT_ROLE_PERMISSIONS[role], ...(settings.role_permissions[role] ?? {}) };
 }
 
-// حارس الصفحات بالصلاحيات — الإعدادات نفسها محمية دائماً للمدير تفادياً لقفل النظام
+export async function permissionsForStaff(staff: Staff): Promise<Record<PermKey, boolean>> {
+  const repo = await getRepo();
+  const settings = await repo.settingsGet();
+  const byRole = { ...DEFAULT_ROLE_PERMISSIONS[staff.role], ...(settings.role_permissions[staff.role] ?? {}) };
+  return { ...byRole, ...(settings.user_permissions[staff.id] ?? {}) };
+}
+
+export async function hasPermission(staff: Staff, key: PermKey): Promise<boolean> {
+  if (staff.role === "admin" && key === "settings") return true; // منع قفل النظام
+  return (await permissionsForStaff(staff))[key] ?? false;
+}
+
+export async function requireActionPermission(key: PermKey, roles?: Role[]): Promise<Staff> {
+  const s = await requireStaff(roles);
+  if (!(await hasPermission(s, key))) redirect("/dashboard?denied=" + key);
+  return s;
+}
+
+// حارس الصفحات بالصلاحيات — يشمل استثناءات الشخص فوق صلاحيات دوره
 export async function requirePerm(key: PermKey): Promise<Staff> {
   const s = await currentStaff();
   if (!s) redirect("/login");
-  const perms = await permissionsOf(s.role);
-  const allowAlways = s.role === "admin" && key === "settings";
-  if (!perms[key] && !allowAlways) redirect("/dashboard?denied=" + key);
+  if (!(await hasPermission(s, key))) redirect("/dashboard?denied=" + key);
   return s;
 }
 

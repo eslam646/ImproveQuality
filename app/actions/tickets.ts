@@ -2,14 +2,14 @@
 
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { canManage, requirePerm, requireStaff } from "@/lib/auth";
+import { canManage, requireActionPermission, requirePerm, requireStaff } from "@/lib/auth";
 import {
   addNoteOp, assignDeveloperOp, assignTesterOp, changeStatusOp, createTicketOp,
   declineAssignmentOp, respondToAssignmentOp, setEstimationOp,
 } from "@/lib/ops";
 import { getRepo } from "@/lib/db";
 import type { DevStatus, RequestType } from "@/lib/types";
-import { allowedTransitions, NOTE_REQUIRED_STATUSES, ROLE_LABELS } from "@/lib/labels";
+import { allowedTransitions, ALL_STATUSES, NOTE_REQUIRED_STATUSES, ROLE_LABELS } from "@/lib/labels";
 import { hashPrivateToken } from "@/lib/private-links";
 
 function enc(msg: string) { return encodeURIComponent(msg); }
@@ -68,7 +68,7 @@ export async function createPrivateRequestAction(formData: FormData) {
 
 // ═══ إنشاء طلب (داخلي) ═══
 export async function createTicketAction(formData: FormData) {
-  const actor = await requirePerm("new_ticket");
+  const actor = await requireActionPermission("create_standard_ticket");
   const repo = await getRepo();
   const settings = await repo.settingsGet();
   const cfg = settings.form_fields;
@@ -145,7 +145,7 @@ export async function createTicketAction(formData: FormData) {
 
 // ═══ دعم فوري — مسار مستقل، ويشترط تعيين التيست والمطور ═══
 export async function createInstantSupportAction(formData: FormData) {
-  const actor = await requirePerm("new_ticket");
+  const actor = await requireActionPermission("create_instant_support");
   const repo = await getRepo();
   const client_id = String(formData.get("client_id") ?? "").trim();
   let client_name = String(formData.get("client_name") ?? "").trim();
@@ -196,7 +196,7 @@ export async function createInstantSupportAction(formData: FormData) {
 
 // ═══ إسناد التيست (أولاً دائماً) + تقدير التنفيذ ═══
 export async function assignTesterAction(formData: FormData) {
-  const actor = await requireStaff(["admin"]);
+  const actor = await requireActionPermission("assign_tester");
   const code = String(formData.get("code") ?? "");
   const testerId = String(formData.get("tester_id") ?? "");
   const repo = await getRepo();
@@ -212,19 +212,13 @@ export async function assignTesterAction(formData: FormData) {
 
 // ═══ إسناد المطوّر — مسموح بعد تعيين التيست فقط ═══
 export async function assignDeveloperAction(formData: FormData) {
-  const actor = await requireStaff();
+  const actor = await requireActionPermission("assign_developer");
   const code = String(formData.get("code") ?? "");
   const developerId = String(formData.get("developer_id") ?? "");
   const repo = await getRepo();
   const t = await repo.ticketByCode(code);
   if (!t) redirect("/dashboard");
 
-  // من يسند؟ الإدارة/الدعم — أو التيست المسند نفسه (يستلم ثم يسلّم للديف)
-  const isManager = actor.role === "admin";
-  const isAssignedTester = actor.role === "tester" && t.tester_id === actor.id;
-  if (!isManager && !isAssignedTester) {
-    redirect(`/tickets/${code}?err=${enc("إسناد المطور من صلاحية الإدارة أو التيست المسند فقط")}`);
-  }
   // القاعدة الذهبية: لا مطوّر قبل المختبِر أولاً
   if (!t.tester_id) {
     redirect(`/tickets/${code}?err=${enc("حدّد فريق الاختبار أولاً — لا يُسنَد المطوّر إلا بعد التيست")}`);
@@ -240,7 +234,7 @@ export async function assignDeveloperAction(formData: FormData) {
 
 // ═══ قبول/رفض التكليف — مستقل للتيستر والمطور ═══
 export async function respondToAssignmentAction(formData: FormData) {
-  const actor = await requireStaff(["tester", "developer"]);
+  const actor = await requireActionPermission("assignment_decision", ["tester", "developer"]);
   const code = String(formData.get("code") ?? "");
   const decision = String(formData.get("decision") ?? "") as "accepted" | "declined";
   const reason = String(formData.get("reason") ?? "").trim();
@@ -264,7 +258,7 @@ export async function respondToAssignmentAction(formData: FormData) {
 
 // ═══ الاعتذار عن الدعم الفوري بعد القبول (التيست/الديف) بسبب إجباري ═══
 export async function declineAssignmentAction(formData: FormData) {
-  const actor = await requireStaff(["tester", "developer"]);
+  const actor = await requireActionPermission("assignment_decision", ["tester", "developer"]);
   const code = String(formData.get("code") ?? "");
   const reason = String(formData.get("reason") ?? "").trim();
   const repo = await getRepo();
@@ -283,7 +277,7 @@ export async function declineAssignmentAction(formData: FormData) {
 
 // ═══ تحديث تقدير التنفيذ (ساعات/أيام) — يظهر في الطلب والاستعلام ═══
 export async function setEstimationAction(formData: FormData) {
-  await requireStaff(["admin"]);
+  await requireActionPermission("set_estimation");
   const code = String(formData.get("code") ?? "");
   const repo = await getRepo();
   const t = await repo.ticketByCode(code);
@@ -294,14 +288,14 @@ export async function setEstimationAction(formData: FormData) {
 
 // ═══ تغيير الحالة — بملاحظة إجبارية عند الرفض/فشل الاختبار ═══
 export async function changeStatusAction(formData: FormData) {
-  const actor = await requireStaff();
+  const actor = await requireActionPermission("change_status");
   const code = String(formData.get("code") ?? "");
   const status = String(formData.get("dev_status") ?? "") as DevStatus;
   const note = String(formData.get("note") ?? "");
   const repo = await getRepo();
   const t = await repo.ticketByCode(code);
   if (!t) redirect("/dashboard");
-  const allowed = allowedTransitions(actor.role, t.dev_status);
+  const allowed = actor.role === "support" ? ALL_STATUSES.filter((s) => s !== t.dev_status) : allowedTransitions(actor.role, t.dev_status);
   if (!allowed.includes(status)) {
     redirect(`/tickets/${code}?err=${enc("غير مصرح لك بهذا التحويل")}`);
   }
@@ -336,7 +330,7 @@ export async function testerResultAction(formData: FormData) {
 
 // ═══ ملاحظة/رد — مفتوح لكل أطراف الطلب (مدخل بيانات ↔ التيست ↔ الديف ↔ الإدارة) ═══
 export async function addNoteAction(formData: FormData) {
-  const actor = await requireStaff();
+  const actor = await requireActionPermission("add_note");
   const code = String(formData.get("code") ?? "");
   const note = String(formData.get("note") ?? "").trim();
   const repo = await getRepo();

@@ -1,5 +1,5 @@
 import { createInstantSupportAction } from "@/app/actions/tickets";
-import { requirePerm } from "@/lib/auth";
+import { requireActionPermission } from "@/lib/auth";
 import { getRepo } from "@/lib/db";
 import { Button, Card, Field, inputCls, Msg, selectCls } from "@/components/ui";
 
@@ -10,7 +10,7 @@ export default async function InstantSupportPage({
 }: {
   searchParams: Promise<Record<string, string | undefined>>;
 }) {
-  const actor = await requirePerm("new_ticket");
+  const actor = await requireActionPermission("create_instant_support");
   const sp = await searchParams;
   const repo = await getRepo();
   const [staff, clients, settings] = await Promise.all([repo.staffList(true), repo.clientsList(true), repo.settingsGet()]);

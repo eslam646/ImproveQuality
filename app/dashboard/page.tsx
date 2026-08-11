@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { getRepo } from "@/lib/db";
-import { requireStaff, canManage, permissionsOf } from "@/lib/auth";
+import { requireStaff, canManage, permissionsForStaff } from "@/lib/auth";
 import { TicketsTable } from "@/components/tickets-table";
 import { ALL_STATUSES, FINAL_STATUSES, REQUEST_TYPE_LABELS, STATUS_LABELS, TICKET_KIND_LABELS } from "@/lib/labels";
 import { Button, inputCls, selectCls } from "@/components/ui";
@@ -17,9 +17,10 @@ export default async function DashboardPage({
   const sp = await searchParams;
   const repo = await getRepo();
   const manage = canManage(actor);
-  const perms = await permissionsOf(actor.role);
-  const canNewTicket = ["admin", "support"].includes(actor.role) && (perms.new_ticket ?? false);
-  const canExport = ["admin", "support"].includes(actor.role) && (perms.export_csv ?? false);
+  const perms = await permissionsForStaff(actor);
+  const canNewTicket = perms.create_standard_ticket ?? false;
+  const canInstantSupport = perms.create_instant_support ?? false;
+  const canExport = perms.export_csv ?? false;
 
   const page = Math.max(1, parseInt(sp.page ?? "1", 10) || 1);
   const q = sp.q ?? "";
@@ -28,10 +29,10 @@ export default async function DashboardPage({
   const tester_id = sp.tester_id ?? "";
   const request_type = (sp.request_type ?? "") as RequestType | "";
   const ticket_kind = (sp.ticket_kind ?? "") as TicketKind | "";
-  // المطور يرى تذاكره فقط دائماً — بدون خيار عرض الكل
-  const mine = actor.role === "developer";
+  const canViewAll = perms.view_all_tickets ?? false;
+  const mine = actor.role === "developer" && !canViewAll;
 
-  const filterStaff = manage ? await repo.staffList(true) : [];
+  const filterStaff = canViewAll ? await repo.staffList(true) : [];
   const devs = filterStaff.filter((s) => s.role === "developer");
   const testers = filterStaff.filter((s) => s.role === "tester");
   const [{ rows, total }, counts] = await Promise.all([
@@ -39,11 +40,10 @@ export default async function DashboardPage({
       q: q || undefined,
       status: status || undefined,
       developer_id: mine ? actor.id : developer_id || undefined,
-      tester_id: actor.role === "tester" ? actor.id : tester_id || undefined,
+      tester_id: actor.role === "tester" && !canViewAll ? actor.id : tester_id || undefined,
       request_type: request_type || undefined,
       ticket_kind: ticket_kind || undefined,
-      // مدخل البيانات يشاهد الطلبات التي أنشأها هو فقط — View-only مع ملاحظات
-      created_by: actor.role === "support" ? actor.id : undefined,
+      created_by: actor.role === "support" && !canViewAll ? actor.id : undefined,
       page, pageSize: 15,
     }),
     repo.ticketCounts(),
@@ -93,7 +93,7 @@ export default async function DashboardPage({
         </div>
       </div>
 
-      {canNewTicket && (
+      {canInstantSupport && (
         <Link
           href="/instant-support"
           className="block rounded-2xl border border-rose-300 bg-gradient-to-l from-rose-600 to-orange-500 p-5 text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
@@ -138,7 +138,7 @@ export default async function DashboardPage({
           <option value="">عادي + دعم فوري</option>
           {Object.entries(TICKET_KIND_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
         </select>
-        {manage && (
+        {canViewAll && (
           <>
             <select name="tester_id" defaultValue={tester_id} className={`${selectCls} max-w-48`}>
               <option value="">كل مسؤولي الاختبار</option>

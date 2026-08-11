@@ -1,5 +1,5 @@
 import { getRepo } from "@/lib/db";
-import { requirePerm } from "@/lib/auth";
+import { requireActionPermission } from "@/lib/auth";
 import { createTicketAction } from "@/app/actions/tickets";
 import { Button, Card, Field, inputCls, Msg, selectCls } from "@/components/ui";
 import { CustomFieldInput } from "@/components/public-forms";
@@ -12,7 +12,7 @@ export default async function NewTicketPage({
 }: {
   searchParams: Promise<Record<string, string | undefined>>;
 }) {
-  const actor = await requirePerm("new_ticket");
+  const actor = await requireActionPermission("create_standard_ticket");
   const sp = await searchParams;
   const repo = await getRepo();
   const settings = await repo.settingsGet();

@@ -2,7 +2,7 @@ import { getRepo } from "@/lib/db";
 import { Card, EmptyState, Badge } from "@/components/ui";
 import { PublicUpdateForm } from "@/components/public-forms";
 import { STATUS_COLORS, STATUS_LABELS } from "@/lib/labels";
-import { currentStaff } from "@/lib/auth";
+import { currentStaff, permissionsForStaff } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -17,11 +17,16 @@ export default async function PublicUpdateFormPage({
   const settings = await repo.settingsGet();
   const ticket = settings.allow_public_update && code ? await repo.ticketByCode(code) : null;
   const actor = await currentStaff();
-  const canUpdate = !!ticket && !!actor && (
-    actor.role === "admin"
-    || (actor.role === "tester" && ticket.tester_id === actor.id && ticket.tester_assignment_status === "accepted")
-    || (actor.role === "developer" && ticket.developer_id === actor.id && ticket.developer_assignment_status === "accepted")
+  const perms = actor ? await permissionsForStaff(actor) : null;
+  const related = !!ticket && !!actor && (
+    perms?.view_all_tickets
+    || (perms?.view_own_created && ticket.created_by === actor.id)
+    || (perms?.view_assigned_tickets && (ticket.tester_id === actor.id || ticket.developer_id === actor.id))
   );
+  const accepted = !actor || actor.role === "admin" || actor.role === "support"
+    || (actor.role === "tester" && ticket?.tester_assignment_status === "accepted")
+    || (actor.role === "developer" && ticket?.developer_assignment_status === "accepted");
+  const canUpdate = !!perms?.change_status && related && accepted;
 
   return (
     <div className="mx-auto max-w-xl space-y-4 py-6">
@@ -36,7 +41,7 @@ export default async function PublicUpdateFormPage({
           {code ? <>كود الطلب <b dir="ltr">{code}</b> غير موجود — تأكد من الكود وحاول مجدداً.</> : "أضف كود الطلب إلى الرابط: ‎/update-form?code=T-XXXX‎"}
         </EmptyState>
       ) : !canUpdate ? (
-        <EmptyState>هذه الصفحة لتحديث التيستر أو المطور المسند فقط. مدخل البيانات في وضع القراءة وإضافة الملاحظات من صفحة الطلب.</EmptyState>
+        <EmptyState>صلاحية تغيير الحالة غير مفعلة لك، أو أن الطلب ليس ضمن نطاق رؤيتك، أو لم تقبل التكليف بعد.</EmptyState>
       ) : (
         <Card>
           <div className="mb-4 grid grid-cols-2 gap-3 rounded-lg bg-slate-50 p-4 text-sm">

@@ -1,12 +1,12 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { requireStaff } from "@/lib/auth";
+import { requireActionPermission, requireStaff } from "@/lib/auth";
 import { getRepo } from "@/lib/db";
 import { renderBlocks, renderTemplate, templateVars, wrapEmail } from "@/lib/templates";
 import { sendMail } from "@/lib/email";
 import { settingsSchema, staffSchema, templateSchema } from "@/lib/validators";
-import type { CustomFieldCfg, CustomFieldType, FormFieldCfg, Role, RolePermissions, TemplateBlocks, TrackPageCfg, UrgentFormFieldCfg } from "@/lib/types";
+import type { CustomFieldCfg, CustomFieldType, FormFieldCfg, Role, RolePermissions, TemplateBlocks, TrackPageCfg, UrgentFormFieldCfg, UserPermissionOverrides } from "@/lib/types";
 import { DEFAULT_TEMPLATE_BLOCKS } from "@/lib/types";
 import { isEmail } from "@/lib/util";
 import { generatePrivateToken, hashPrivateToken } from "@/lib/private-links";
@@ -142,7 +142,7 @@ export async function toggleStaffAction(id: string, active: number) {
 
 // ====== الروابط الخاصة الآمنة لمدخلي البيانات ======
 export async function generatePrivateAccessLinkAction(staffId: string) {
-  const actor = await requireStaff(["admin"]);
+  const actor = await requireActionPermission("manage_private_links");
   const repo = await getRepo();
   const target = await repo.staffGet(staffId);
   if (!target || target.role !== "support") return { ok: false, error: "اختر موظفاً بدور مدخل بيانات" };
@@ -162,7 +162,7 @@ export async function generatePrivateAccessLinkAction(staffId: string) {
 }
 
 export async function revokePrivateAccessLinkAction(id: string) {
-  const actor = await requireStaff(["admin"]);
+  const actor = await requireActionPermission("manage_private_links");
   const repo = await getRepo();
   await repo.privateLinkRevoke(id);
   await repo.auditAdd({
@@ -189,7 +189,7 @@ export async function updateSettingsAction(input: {
 
 // ====== سجل البريد: إعادة إرسال ======
 export async function resendEmailAction(logId: string) {
-  const actor = await requireStaff(["admin"]);
+  const actor = await requireActionPermission("resend_email");
   const repo = await getRepo();
   const { rows } = await repo.emailLogList(1, 1000);
   const log = rows.find((r) => r.id === logId);
@@ -209,7 +209,7 @@ export async function resendEmailAction(logId: string) {
 }
 
 export async function resendEmailToRecipientsAction(logId: string, recipients: string[], ccRecipients: string[] = []) {
-  const actor = await requireStaff(["admin"]);
+  const actor = await requireActionPermission("resend_email");
   const to = [...new Set(recipients.map((e) => e.trim().toLowerCase()).filter(isEmail))].slice(0, 20);
   const cc = [...new Set(ccRecipients.map((e) => e.trim().toLowerCase()).filter(isEmail))]
     .filter((e) => !to.includes(e)).slice(0, 20);
@@ -253,6 +253,18 @@ export async function saveRolePermissionsAction(perms: RolePermissions) {
 }
 
 // ====== تحكم صفحة الاستعلام العامة ======
+export async function saveUserPermissionsAction(overrides: UserPermissionOverrides) {
+  await requireStaff(["admin"]);
+  const repo = await getRepo();
+  // لا نسمح بمنع صفحة الإعدادات عن كل المديرين عبر استثناء فردي للمدير الحالي
+  const clean = Object.fromEntries(Object.entries(overrides).map(([id, p]) => [id, { ...p }])) as UserPermissionOverrides;
+  await repo.settingsSet({ user_permissions: clean });
+  await repo.auditAdd({ entity_type: "settings", entity_id: "user_permissions", action: "permissions.user_overrides_updated", actor_label: "مدير النظام", new_values: { staff_count: Object.keys(clean).length } });
+  revalidatePath("/settings");
+  revalidatePath("/dashboard");
+  return { ok: true };
+}
+
 export async function saveTrackCfgAction(cfg: TrackPageCfg) {
   await requireStaff(["admin"]);
   const repo = await getRepo();

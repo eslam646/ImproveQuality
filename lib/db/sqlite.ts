@@ -4,7 +4,7 @@ import path from "path";
 import type { Repo, TicketFilter } from "./index";
 import type {
   AuditEntry, AutomationRule, Attachment, Client, CustomFieldCfg, EmailLog, EmailTemplate, FormFieldCfg, Job, Notification,
-  PermKey, PrivateAccessLink, Role, RolePermissions, Settings, Staff, Ticket, TicketAssignment, TicketEvent, TrackPageCfg, UrgentFormFieldCfg,
+  PermKey, PrivateAccessLink, Role, RolePermissions, Settings, Staff, Ticket, TicketAssignment, TicketEvent, TrackPageCfg, UrgentFormFieldCfg, UserPermissionOverrides,
 } from "../types";
 import { DEFAULT_FORM_FIELDS, DEFAULT_ROLE_PERMISSIONS, DEFAULT_TRACK_CFG, DEFAULT_URGENT_FORM_FIELDS } from "../types";
 import { SEED_RULES, SEED_STAFF, SEED_TEMPLATES, SEED_TICKETS } from "../seed";
@@ -220,6 +220,10 @@ export function createSqliteRepo(): Repo {
         }, {} as RolePermissions);
       } catch { /* الافتراضي */ }
     }
+    let user_permissions: UserPermissionOverrides = {};
+    if (m.user_permissions) {
+      try { user_permissions = JSON.parse(m.user_permissions) as UserPermissionOverrides; } catch { /* فارغ */ }
+    }
     // منشئ الحقول المخصصة
     let custom_fields: CustomFieldCfg[] = [];
     if (m.custom_fields) {
@@ -245,6 +249,7 @@ export function createSqliteRepo(): Repo {
       form_fields,
       urgent_form_fields,
       role_permissions,
+      user_permissions,
       custom_fields,
       track_cfg,
     } as Settings;
@@ -322,6 +327,7 @@ export function createSqliteRepo(): Repo {
       if (patch.allow_track !== undefined) ins.run("allow_track", patch.allow_track ? "1" : "0");
       if (patch.allow_public_update !== undefined) ins.run("allow_public_update", patch.allow_public_update ? "1" : "0");
       if (patch.role_permissions !== undefined) ins.run("role_permissions", JSON.stringify(patch.role_permissions));
+      if (patch.user_permissions !== undefined) ins.run("user_permissions", JSON.stringify(patch.user_permissions));
       if (patch.custom_fields !== undefined) ins.run("custom_fields", JSON.stringify(patch.custom_fields));
       if (patch.track_cfg !== undefined) ins.run("track_cfg", JSON.stringify(patch.track_cfg));
     },

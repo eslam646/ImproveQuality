@@ -1,6 +1,6 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type { Repo, TicketFilter } from "./index";
-import type { AuditEntry, Client, CustomFieldCfg, EmailLog, FormFieldCfg, Job, PermKey, PrivateAccessLink, Role, RolePermissions, Settings, Staff, Ticket, TicketAssignment, TicketEvent, TrackPageCfg, UrgentFormFieldCfg } from "../types";
+import type { AuditEntry, Client, CustomFieldCfg, EmailLog, FormFieldCfg, Job, PermKey, PrivateAccessLink, Role, RolePermissions, Settings, Staff, Ticket, TicketAssignment, TicketEvent, TrackPageCfg, UrgentFormFieldCfg, UserPermissionOverrides } from "../types";
 import { DEFAULT_FORM_FIELDS, DEFAULT_ROLE_PERMISSIONS, DEFAULT_TRACK_CFG, DEFAULT_URGENT_FORM_FIELDS } from "../types";
 import { SEED_RULES, SEED_STAFF, SEED_TEMPLATES, SEED_TICKETS } from "../seed";
 import { genId, genTicketCode, nowIso } from "../util";
@@ -73,6 +73,10 @@ export async function createSupabaseRepo(): Promise<Repo> {
         }, {} as RolePermissions);
       } catch { /* الافتراضي */ }
     }
+    let user_permissions: UserPermissionOverrides = {};
+    if (m.user_permissions) {
+      try { user_permissions = JSON.parse(m.user_permissions) as UserPermissionOverrides; } catch { /* فارغ */ }
+    }
     // منشئ الحقول المخصصة
     let custom_fields: CustomFieldCfg[] = [];
     if (m.custom_fields) {
@@ -98,6 +102,7 @@ export async function createSupabaseRepo(): Promise<Repo> {
       form_fields,
       urgent_form_fields,
       role_permissions,
+      user_permissions,
       custom_fields,
       track_cfg,
     } as Settings;
@@ -171,6 +176,7 @@ export async function createSupabaseRepo(): Promise<Repo> {
       if (patch.allow_track !== undefined) rows.push({ key: "allow_track", value: patch.allow_track ? "1" : "0" });
       if (patch.allow_public_update !== undefined) rows.push({ key: "allow_public_update", value: patch.allow_public_update ? "1" : "0" });
       if (patch.role_permissions !== undefined) rows.push({ key: "role_permissions", value: JSON.stringify(patch.role_permissions) });
+      if (patch.user_permissions !== undefined) rows.push({ key: "user_permissions", value: JSON.stringify(patch.user_permissions) });
       if (patch.custom_fields !== undefined) rows.push({ key: "custom_fields", value: JSON.stringify(patch.custom_fields) });
       if (patch.track_cfg !== undefined) rows.push({ key: "track_cfg", value: JSON.stringify(patch.track_cfg) });
       if (rows.length) must(await sb.from("settings").upsert(rows));

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { currentStaff, permissionsOf } from "@/lib/auth";
+import { currentStaff, permissionsForStaff } from "@/lib/auth";
 import { getRepo } from "@/lib/db";
 import type { PermKey } from "@/lib/types";
 import { LogoutButton } from "./logout-button";
@@ -14,12 +14,12 @@ export async function Topbar() {
   const switcher = (["admin", "support", "developer", "tester"] as const)
     .map((role) => ({ role, person: allStaff.find((s) => s.role === role) }))
     .filter((x) => x.person);
-  const perms = staff ? await permissionsOf(staff.role) : null;
+  const perms = staff ? await permissionsForStaff(staff) : null;
 
   const links = [
     { href: "/dashboard", label: "التذاكر", perm: "dashboard" as PermKey },
-    { href: "/tickets/new", label: "+ طلب جديد", perm: "new_ticket" as PermKey },
-    { href: "/instant-support", label: "🚨 دعم فوري", perm: "new_ticket" as PermKey },
+    { href: "/tickets/new", label: "+ طلب جديد", perm: "create_standard_ticket" as PermKey },
+    { href: "/instant-support", label: "🚨 دعم فوري", perm: "create_instant_support" as PermKey },
     { href: "/testing", label: "واجهة الاختبار", perm: "testing" as PermKey },
     { href: "/automation", label: "الأتمتة", perm: "automation" as PermKey },
     { href: "/templates", label: "القوالب", perm: "templates" as PermKey },

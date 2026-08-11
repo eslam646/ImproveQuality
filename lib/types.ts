@@ -246,6 +246,7 @@ export interface Settings {
   form_fields: FormFieldCfg[]; // نموذج الطلب العادي/العام — ترتيب المصفوفة هو ترتيب العرض
   urgent_form_fields: UrgentFormFieldCfg[]; // نموذج الدعم الفوري — إظهار/إلزام/ترتيب
   role_permissions: RolePermissions; // مصفوفة صلاحيات الأدوار
+  user_permissions: UserPermissionOverrides; // استثناءات فردية: true سماح / false منع / غير موجود يرث الدور
   custom_fields: CustomFieldCfg[];   // منشئ الحقول المخصصة
   track_cfg: TrackPageCfg;           // ماذا تعرض صفحة الاستعلام العامة
 }
@@ -349,28 +350,54 @@ export const DEFAULT_TEMPLATE_BLOCKS: TemplateBlocks = {
 
 // ===== مصفوفة الصلاحيات (يتحكم بها الأدمن من الإعدادات) =====
 export type PermKey =
-  | "dashboard" | "new_ticket" | "testing" | "automation"
-  | "templates" | "staff" | "emails" | "settings" | "export_csv";
+  // الصفحات
+  | "dashboard" | "new_ticket" | "testing" | "automation" | "templates" | "staff" | "emails" | "settings" | "export_csv"
+  // نطاق الرؤية
+  | "view_all_tickets" | "view_own_created" | "view_assigned_tickets" | "view_audit"
+  // إجراءات التذكرة
+  | "create_standard_ticket" | "create_instant_support" | "edit_ticket_fields" | "assign_tester" | "assign_developer"
+  | "set_estimation" | "change_status" | "add_note" | "upload_attachment" | "assignment_decision"
+  // إدارة وتشغيل
+  | "manage_private_links" | "resend_email";
 
 export const PERM_LABELS: Record<PermKey, string> = {
-  dashboard: "لوحة التذاكر",
-  new_ticket: "إنشاء طلب جديد",
-  testing: "واجهة الاختبار",
-  automation: "مركز الأتمتة",
-  templates: "قوالب البريد",
-  staff: "الموظفون والعملاء",
-  emails: "سجل البريد",
-  settings: "إعدادات النظام",
-  export_csv: "تصدير CSV",
+  dashboard: "صفحة: لوحة التذاكر", new_ticket: "صفحة: إنشاء طلب", testing: "صفحة: واجهة الاختبار",
+  automation: "صفحة: الأتمتة", templates: "صفحة: قوالب البريد", staff: "صفحة: الموظفون والعملاء",
+  emails: "صفحة: سجل البريد", settings: "صفحة: الإعدادات", export_csv: "تصدير CSV",
+  view_all_tickets: "رؤية كل التذاكر", view_own_created: "رؤية الطلبات التي أنشأها", view_assigned_tickets: "رؤية التذاكر المسندة إليه", view_audit: "رؤية سجل التدقيق",
+  create_standard_ticket: "إنشاء طلب عادي", create_instant_support: "إنشاء دعم فوري", edit_ticket_fields: "تعديل بيانات الطلب",
+  assign_tester: "إسناد / تغيير التيستر", assign_developer: "إسناد / تغيير المطور", set_estimation: "تعديل التقدير",
+  change_status: "تغيير الحالة المسموحة للدور", add_note: "إضافة ملاحظات", upload_attachment: "رفع مرفقات بعد الإنشاء",
+  assignment_decision: "قبول / رفض التكليف", manage_private_links: "إدارة الروابط الخاصة", resend_email: "إعادة إرسال البريد",
 };
 
 export type RolePermissions = Record<Role, Record<PermKey, boolean>>;
+export type UserPermissionOverrides = Record<string, Partial<Record<PermKey, boolean>>>;
 
+const ADMIN_PERMISSIONS = Object.fromEntries((Object.keys(PERM_LABELS) as PermKey[]).map((k) => [k, true])) as Record<PermKey, boolean>;
 export const DEFAULT_ROLE_PERMISSIONS: RolePermissions = {
-  admin: { dashboard: true, new_ticket: true, testing: true, automation: true, templates: true, staff: true, emails: true, settings: true, export_csv: true },
-  support: { dashboard: true, new_ticket: true, testing: false, automation: false, templates: false, staff: false, emails: false, settings: false, export_csv: true },
-  developer: { dashboard: true, new_ticket: false, testing: false, automation: false, templates: false, staff: false, emails: false, settings: false, export_csv: false },
-  tester: { dashboard: true, new_ticket: false, testing: true, automation: false, templates: false, staff: false, emails: false, settings: false, export_csv: false },
+  admin: ADMIN_PERMISSIONS,
+  support: {
+    dashboard: true, new_ticket: true, testing: false, automation: false, templates: false, staff: false, emails: false, settings: false, export_csv: true,
+    view_all_tickets: false, view_own_created: true, view_assigned_tickets: false, view_audit: false,
+    create_standard_ticket: true, create_instant_support: true, edit_ticket_fields: false, assign_tester: false, assign_developer: false,
+    set_estimation: false, change_status: false, add_note: true, upload_attachment: false, assignment_decision: false,
+    manage_private_links: false, resend_email: false,
+  },
+  developer: {
+    dashboard: true, new_ticket: false, testing: false, automation: false, templates: false, staff: false, emails: false, settings: false, export_csv: false,
+    view_all_tickets: false, view_own_created: false, view_assigned_tickets: true, view_audit: false,
+    create_standard_ticket: false, create_instant_support: false, edit_ticket_fields: false, assign_tester: false, assign_developer: false,
+    set_estimation: false, change_status: true, add_note: true, upload_attachment: true, assignment_decision: true,
+    manage_private_links: false, resend_email: false,
+  },
+  tester: {
+    dashboard: true, new_ticket: false, testing: true, automation: false, templates: false, staff: false, emails: false, settings: false, export_csv: false,
+    view_all_tickets: false, view_own_created: false, view_assigned_tickets: true, view_audit: false,
+    create_standard_ticket: false, create_instant_support: false, edit_ticket_fields: false, assign_tester: false, assign_developer: true,
+    set_estimation: false, change_status: true, add_note: true, upload_attachment: true, assignment_decision: true,
+    manage_private_links: false, resend_email: false,
+  },
 };
 
 // ===== منشئ الحقول المخصصة =====
