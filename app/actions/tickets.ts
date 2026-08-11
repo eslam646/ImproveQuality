@@ -149,7 +149,7 @@ export async function createInstantSupportAction(formData: FormData) {
   const repo = await getRepo();
   const client_id = String(formData.get("client_id") ?? "").trim();
   let client_name = String(formData.get("client_name") ?? "").trim();
-  let client_contact = String(formData.get("client_contact") ?? "").trim();
+  const creator_id = String(formData.get("creator_id") ?? "").trim();
   const title = String(formData.get("title") ?? "").trim();
   const details = String(formData.get("details") ?? "").trim();
   const affected_service = String(formData.get("affected_service") ?? "").trim();
@@ -159,11 +159,10 @@ export async function createInstantSupportAction(formData: FormData) {
 
   if (client_id) {
     const c = (await repo.clientsList()).find((x) => x.id === client_id);
-    if (c) {
-      client_name = c.name;
-      if (!client_contact && c.contact_email) client_contact = c.contact_email;
-    }
+    if (c) client_name = c.name;
   }
+  const requester = await repo.staffGet(creator_id);
+  if (!requester || !requester.active || !["support", "admin"].includes(requester.role)) fail("اختيار مدخل البيانات إجباري");
   if (client_name.length < 2) fail("اختر العميل أو اكتب اسمه");
   if (title.length < 3) fail("عنوان المشكلة الطارئة إجباري");
   if (affected_service.length < 2) fail("حدد السيرفر أو قاعدة البيانات أو الخدمة المتأثرة");
@@ -173,7 +172,8 @@ export async function createInstantSupportAction(formData: FormData) {
 
   const ticket = await createTicketOp({
     client_name,
-    client_contact: client_contact || actor.email || null,
+    client_contact: requester!.email,
+    creator_id: requester!.id,
     title,
     details,
     request_type: "issue",
@@ -187,7 +187,6 @@ export async function createInstantSupportAction(formData: FormData) {
     actor: { staff_id: actor.id, label: labelOf(actor) },
     source: "internal",
   });
-  await setEstimationOp(ticket.id, estFromForm(formData));
   revalidatePath("/dashboard");
   redirect(`/tickets/${ticket.code}?created=1&ok=${enc("تم إنشاء طلب الدعم الفوري وإرسال التكليف للتيست والمطور ✓")}`);
 }

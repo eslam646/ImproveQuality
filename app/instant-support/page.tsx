@@ -16,6 +16,7 @@ export default async function InstantSupportPage({
   const [staff, clients] = await Promise.all([repo.staffList(true), repo.clientsList(true)]);
   const testers = staff.filter((s) => s.role === "tester");
   const developers = staff.filter((s) => s.role === "developer");
+  const requesters = staff.filter((s) => s.role === "support" || s.role === "admin");
 
   return (
     <div className="mx-auto max-w-2xl space-y-5">
@@ -39,8 +40,11 @@ export default async function InstantSupportPage({
             <input name="client_name" className={`${inputCls} mt-2`} placeholder="أو اكتب اسم العميل" />
           </Field>
 
-          <Field label="بريد العميل (اختياري)" hint="يُستخدم لإرسال تحديثات الطلب للعميل">
-            <input name="client_contact" type="email" dir="ltr" className={inputCls} placeholder="client@example.com" />
+          <Field label="مدخل البيانات (مقدم الطلب) *" hint="يُستخدم اسمه وبريده ديناميكيًا في الإيميلات والسجل">
+            <select name="creator_id" required className={selectCls} defaultValue={requesters.some((r) => r.id === actor.id) ? actor.id : (requesters[0]?.id ?? "")}>
+              <option value="" disabled>اختر مدخل البيانات…</option>
+              {requesters.map((r) => <option key={r.id} value={r.id}>{r.name} — {r.email}</option>)}
+            </select>
           </Field>
 
           <Field label="عنوان المشكلة الطارئة *" hint="عنوان مختصر يظهر في الجدول والإيميلات">
@@ -70,15 +74,8 @@ export default async function InstantSupportPage({
             </Field>
           </div>
 
-          <Field label="التقدير المبدئي للاستجابة">
-            <div className="flex gap-2">
-              <input name="est_days" type="number" min="0" max="15" step="0.5" className={inputCls} placeholder="أيام" />
-              <input name="est_hours" type="number" min="0" max="24" step="1" className={inputCls} placeholder="ساعات" />
-            </div>
-          </Field>
-
           <div className="rounded-xl border border-blue-100 bg-blue-50 p-3 text-sm text-blue-800">
-            مقدم الطلب: <b>{actor.name}</b>. بعد الإنشاء يمكنه إضافة ملاحظات حرة، وتُرسل بالإيميل لكل المسؤولين عن الطلب.
+            سيُسجل اسم مدخل البيانات المختار ويصل البريد إليه وإلى المسؤولين وفق قواعد الأتمتة. العميل نفسه لا يحتاج بريدًا.
           </div>
 
           <Button type="submit">🚨 إنشاء وإرسال التكليف فورًا</Button>
