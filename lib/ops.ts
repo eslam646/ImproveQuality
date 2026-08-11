@@ -3,8 +3,9 @@ import { getRepo } from "./db";
 import type { Repo } from "./db";
 import { emit } from "./engine";
 import { sendMail } from "./email";
-import { wrapEmail } from "./templates";
+import { renderBlocks, renderTemplate, templateVars, wrapEmail } from "./templates";
 import { ROLE_LABELS, STATUS_LABELS } from "./labels";
+import { DEFAULT_TEMPLATE_BLOCKS } from "./types";
 import type { DevStatus, RequestType, Role, Settings, Staff, Ticket, TicketKind, TicketPriority } from "./types";
 import { escapeHtml, genTicketCode, isEmail, nowIso } from "./util";
 
@@ -91,6 +92,24 @@ const EST_TEXT = (t: Ticket) =>
 const TRACK_ROW = (t: Ticket, s: Settings) =>
   `<p style="margin:14px 0 0"><a href="${s.base_url}/track?code=${t.code}" style="background:#1d4ed8;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none;font-weight:700">تتبع حالة الطلب ↗</a></p>`;
 
+// بريد تكليف التيستر له قالب واحد مركزي قابل للتعديل — لا تنشئ Rule إضافية لنفس التكليف حتى لا يتكرر
+async function sendTesterAssignmentEmail(ticket: Ticket, actorLabel: string, excludeStaffId: string | null = null) {
+  const repo = await getRepo();
+  const settings = await repo.settingsGet();
+  const tmpl = await repo.templateGet("tmpl-tester-assigned");
+  const vars = templateVars(ticket, settings);
+  const fallbackSubject = `🧪 أُسند إليك اختبار الطلب ${ticket.code}`;
+  const subject = tmpl ? renderTemplate(tmpl.subject, vars, { htmlEscape: false }) : fallbackSubject;
+  const bodyHtml = tmpl
+    ? renderBlocks(vars, { ...DEFAULT_TEMPLATE_BLOCKS, ...(tmpl.blocks ?? {}) }, renderTemplate(tmpl.body_html, vars))
+    : `<p>أُسند إليك اختبار طلب <b dir="ltr">${esc(ticket.code)}</b>${ticket.is_urgent ? " — <b style='color:#dc2626'>دعم فوري عاجل</b>" : ""}</p>
+       <p><b>العميل:</b> ${esc(ticket.client_name)}</p><p><b>التفاصيل:</b><br>${esc(ticket.details).replaceAll("\n", "<br>")}</p>`;
+  await mailParties({
+    ticket, to: ["tester"], excludeStaffId, subject, bodyHtml,
+    notifyTo: ["tester"], notifyMessage: `أُسند إليك اختبار ${ticket.code}${ticket.is_urgent ? " 🚨" : ""}`,
+  });
+}
+
 // ═══ إنشاء طلب ═══
 export async function createTicketOp(input: {
   client_id?: string | null;
@@ -172,16 +191,7 @@ export async function createTicketOp(input: {
       ticket_id: ticket.id, type: "ticket.assigned", actor_label: input.actor.label,
       old_values: null, new_values: { tester: tester_name },
     });
-    await mailParties({
-      ticket, to: ["tester"], excludeStaffId: input.actor.staff_id,
-      subject: `${urgent ? "🚨 دعم فوري — " : "🧪 "}أُسند إليك اختبار الطلب ${ticket.code}`,
-      bodyHtml: `<p>أُسند إليك اختبار طلب <b dir="ltr">${esc(ticket.code)}</b>${urgent ? " — <b style='color:#dc2626'>دعم فوري عاجل</b>" : ""}</p>
-        <p><b>العميل:</b> ${esc(ticket.client_name)}</p>
-        <p><b>التفاصيل:</b><br>${esc(ticket.details).replaceAll("\n", "<br>")}</p>
-        <p><b>من:</b> ${esc(input.actor.label)}</p>`,
-      notifyTo: ["tester"],
-      notifyMessage: `أُسند إليك اختبار ${ticket.code}${urgent ? " 🚨" : ""}`,
-    });
+    await sendTesterAssignmentEmail(ticket, input.actor.label, input.actor.staff_id);
   }
   if (input.developer_id) {
     await assignDeveloperOp(ticket.id, input.developer_id, input.actor.label, undefined, input.actor.staff_id);
@@ -221,18 +231,7 @@ export async function assignTesterOp(
     ticket_id: ticket.id, type: "ticket.assigned", actor_label: actorLabel,
     old_values: { tester: old.tester_name }, new_values: { tester: ts.name },
   });
-  await mailParties({
-    ticket, to: ["tester"], excludeStaffId: null,
-    subject: `🧪 أُسند إليك اختبار الطلب ${ticket.code}`,
-    bodyHtml: `<p>أُسند إليك اختبار طلب <b dir="ltr">${esc(ticket.code)}</b>${ticket.is_urgent ? " — <b style='color:#dc2626'>دعم فوري عاجل</b>" : ""}</p>
-      <p><b>العميل:</b> ${esc(ticket.client_name)}</p>
-      <p><b>التفاصيل:</b><br>${esc(ticket.details).replaceAll("\n", "<br>")}</p>
-      ${EST_TEXT(ticket)}
-      <p><b>من:</b> ${esc(actorLabel)}</p>
-      <p style="color:#64748b">استلمه من صفحة الطلب ثم سلّمه لمطوّر — وأي اعتذار يكون بسبب واضح يصل لمدخل البيانات.</p>`,
-    notifyTo: ["tester"],
-    notifyMessage: `أُسند إليك اختبار ${ticket.code}${ticket.is_urgent ? " 🚨" : ""}`,
-  });
+  await sendTesterAssignmentEmail(ticket, actorLabel);
   return ticket;
 }
 

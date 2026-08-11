@@ -38,6 +38,8 @@ export async function createSupabaseRepo(): Promise<Repo> {
       { key: "base_url", value: process.env.APP_BASE_URL || "http://localhost:3000" },
     ]);
   }
+  // إضافة القوالب الافتراضية الجديدة فقط بدون استبدال أي تعديلات أجراها الأدمن
+  await sb.from("email_templates").upsert(SEED_TEMPLATES, { onConflict: "id", ignoreDuplicates: true });
 
   const settingsGet: Repo["settingsGet"] = async () => {
     const rows = must(await sb.from("settings").select("key,value")) as { key: string; value: string }[];

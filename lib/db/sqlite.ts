@@ -161,6 +161,9 @@ export function createSqliteRepo(): Repo {
     });
     seedAll();
   }
+  // أي قالب افتراضي جديد يُضاف مرة واحدة فقط؛ القوالب المعدلة لا يتم استبدالها
+  const ensureTemplate = db.prepare("INSERT OR IGNORE INTO email_templates (id,name,subject,body_html,blocks,created_at,updated_at) VALUES (?,?,?,?,?,?,?)");
+  SEED_TEMPLATES.forEach((t) => ensureTemplate.run(t.id, t.name, t.subject, t.body_html, t.blocks ? JSON.stringify(t.blocks) : null, t.created_at, t.updated_at));
 
   const mapTemplate = (r: Omit<EmailTemplate, "blocks"> & { blocks: string | null }): EmailTemplate => ({
     ...r,

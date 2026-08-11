@@ -43,6 +43,13 @@ export const SEED_TICKETS: Omit<Ticket, "seq">[] = [
 
 export const SEED_TEMPLATES: EmailTemplate[] = [
   {
+    id: "tmpl-tester-assigned", name: "تكليف التيستر بطلب",
+    subject: "🧪 أُسند إليك اختبار الطلب {{code}} — {{ticket.title}}",
+    body_html: `مرحباً {{ticket.tester_name}}، تم إسناد الطلب التالي إليك للمراجعة والاختبار. وافق على التكليف أو ارفضه بسبب واضح من صفحة الطلب.`,
+    blocks: { ...DEFAULT_TEMPLATE_BLOCKS, status: true, note: false, update_button: false },
+    created_at: nowIso(), updated_at: nowIso(),
+  },
+  {
     id: "tmpl-created", name: "إشعار طلب جديد",
     subject: "طلب جديد {{code}} — {{client_name}}",
     body_html: `تم فتح طلب جديد 🆕 أدخله <b>{{created_by_name}}</b>.`,
