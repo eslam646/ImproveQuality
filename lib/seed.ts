@@ -43,6 +43,13 @@ export const SEED_TICKETS: Omit<Ticket, "seq">[] = [
 
 export const SEED_TEMPLATES: EmailTemplate[] = [
   {
+    id: "tmpl-teams-manual-invite", name: "دعوة اجتماع Teams — رابط يدوي",
+    subject: "📅 {{meeting_subject}} — {{ticket.code}}",
+    body_html: `<p>تمت دعوتك لاجتماع Microsoft Teams مرتبط بالطلب.</p><p><b>الموعد:</b> {{meeting_start}}</p><p><b>المدة:</b> {{meeting_duration}}</p><p><a href="{{meeting_join_url}}" target="_blank" rel="noopener noreferrer" style="display:inline-block;background:#4f46e5;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none;font-weight:700">الانضمام إلى اجتماع Teams ↗</a></p>`,
+    blocks: { ...DEFAULT_TEMPLATE_BLOCKS, details: false, note: false, update_button: false },
+    created_at: nowIso(), updated_at: nowIso(),
+  },
+  {
     id: "tmpl-urgent-withdrawal", name: "اعتذار عن الدعم الفوري",
     subject: "🙅 اعتذار {{actor_role}} عن الدعم الفوري {{code}} — {{actor_name}}",
     body_html: `<b>{{actor_name}}</b> ({{actor_role}}) اعتذر عن الاستمرار في الدعم الفوري.<br><b>سبب الاعتذار:</b> {{reason}}<br>عادت المهمة لانتظار إعادة الإسناد.`,

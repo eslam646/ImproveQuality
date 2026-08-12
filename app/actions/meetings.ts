@@ -6,7 +6,8 @@ import { getRepo } from "@/lib/db";
 import { cancelTeamsCalendarMeeting, createTeamsCalendarMeeting } from "@/lib/teams";
 import { escapeHtml } from "@/lib/util";
 import { sendMail } from "@/lib/email";
-import { wrapEmail } from "@/lib/templates";
+import { renderBlocks, renderTemplate, templateVars, wrapEmail } from "@/lib/templates";
+import { DEFAULT_TEMPLATE_BLOCKS } from "@/lib/types";
 
 export async function createTeamsMeetingAction(input: { code: string; subject: string; startsAt: string; durationMinutes: number; staffIds: string[] }) {
   const actor = await requireActionPermission("manage_meetings");
@@ -53,10 +54,23 @@ export async function addManualTeamsMeetingAction(input: { code: string; subject
   const meeting = await repo.meetingCreate({ ticket_id: ticket.id, provider: "teams", provider_meeting_id: null, subject, starts_at: start.toISOString(), ends_at: end.toISOString(), join_url: parsedUrl.toString(), organizer_staff_id: actor.id, status: "scheduled" });
   await repo.meetingParticipantsAdd(selected.map((s) => ({ meeting_id: meeting.id, staff_id: s.id, email: s.email, response_status: "pending", joined_at: null, left_at: null })));
   const settings = await repo.settingsGet();
-  const html = wrapEmail(subject, `<p>تمت دعوتك لاجتماع Microsoft Teams مرتبط بالطلب <b dir="ltr">${escapeHtml(ticket.code)}</b>.</p><p><b>العميل:</b> ${escapeHtml(ticket.client_name)}</p><p><b>الموعد:</b> ${escapeHtml(start.toLocaleString("ar-EG"))}</p><p><a href="${escapeHtml(parsedUrl.toString())}" target="_blank" rel="noopener noreferrer" style="display:inline-block;background:#4f46e5;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none;font-weight:700">الانضمام إلى اجتماع Teams ↗</a></p>`, settings);
+  const tmpl = await repo.templateGet("tmpl-teams-manual-invite");
+  const vars = {
+    ...templateVars(ticket, settings),
+    meeting_subject: subject,
+    meeting_start: start.toLocaleString("ar-EG"),
+    meeting_end: end.toLocaleString("ar-EG"),
+    meeting_duration: `${duration} دقيقة`,
+    meeting_join_url: parsedUrl.toString(),
+  };
+  const emailSubject = tmpl ? renderTemplate(tmpl.subject, vars, { htmlEscape: false }) : `📅 ${subject}`;
+  const emailInner = tmpl
+    ? renderBlocks(vars, { ...DEFAULT_TEMPLATE_BLOCKS, ...(tmpl.blocks ?? {}) }, renderTemplate(tmpl.body_html, vars))
+    : `<p>تمت دعوتك لاجتماع Teams.</p><p><a href="${escapeHtml(parsedUrl.toString())}" target="_blank">الانضمام إلى Teams</a></p>`;
+  const html = wrapEmail(emailSubject, emailInner, settings);
   const to = selected.map((s) => s.email);
-  const sent = await sendMail({ to, cc: [], subject: `📅 ${subject}`, html }, settings);
-  await repo.emailLogAdd({ job_id: null, ticket_id: ticket.id, to_addr: to.join(","), cc_addr: null, provider: sent.provider, provider_msg_id: sent.msgId, subject: `📅 ${subject}`, body_html: html, status: sent.error ? "failed" : sent.provider === "log" ? "logged" : "sent", error: sent.error ?? null });
+  const sent = await sendMail({ to, cc: [], subject: emailSubject, html }, settings);
+  await repo.emailLogAdd({ job_id: null, ticket_id: ticket.id, to_addr: to.join(","), cc_addr: null, provider: sent.provider, provider_msg_id: sent.msgId, subject: emailSubject, body_html: html, status: sent.error ? "failed" : sent.provider === "log" ? "logged" : "sent", error: sent.error ?? null });
   await repo.eventAdd({ ticket_id: ticket.id, type: "note.added", actor_label: actor.name, old_values: null, new_values: { note: `📅 أضاف رابط اجتماع Teams: ${subject}` } });
   await repo.auditAdd({ entity_type: "ticket", entity_id: ticket.id, action: "teams_meeting.manual_link_added", actor_staff_id: actor.id, actor_label: actor.name, new_values: { meeting_id: meeting.id, starts_at: meeting.starts_at, participant_ids: selected.map((s)=>s.id) } });
   revalidatePath(`/tickets/${ticket.code}`);

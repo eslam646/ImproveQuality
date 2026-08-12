@@ -46,6 +46,11 @@ export async function previewTemplateAction(subject: string, body: string, block
     actor_name: "كريم فؤاد",
     actor_role: "فريق الاختبار",
     reason: "غير متاح حاليًا بسبب تدخل طارئ آخر",
+    meeting_subject: "مراجعة مشكلة الفواتير",
+    meeting_start: new Date(Date.now() + 3600000).toLocaleString("ar-EG"),
+    meeting_end: new Date(Date.now() + 5400000).toLocaleString("ar-EG"),
+    meeting_duration: "30 دقيقة",
+    meeting_join_url: "https://teams.microsoft.com/l/meetup-join/sample",
   };
   const renderedSubject = renderTemplate(subject, vars, { htmlEscape: false });
   const intro = renderTemplate(body, vars);

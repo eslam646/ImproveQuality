@@ -10,7 +10,9 @@ const VARS = [
   "{{ticket.code}}", "{{ticket.client_name}}", "{{ticket.title}}", "{{ticket.request_type}}",
   "{{ticket.ticket_kind}}", "{{ticket.priority}}", "{{ticket.created_by_name}}", "{{ticket.tester_name}}",
   "{{ticket.developer_name}}", "{{ticket.estimation}}", "{{ticket.affected_service}}", "{{status_label}}",
-  "{{old_status_label}}", "{{note}}", "{{actor_name}}", "{{actor_role}}", "{{reason}}", "{{track_url}}", "{{app_name}}",
+  "{{old_status_label}}", "{{note}}", "{{actor_name}}", "{{actor_role}}", "{{reason}}",
+  "{{meeting_subject}}", "{{meeting_start}}", "{{meeting_end}}", "{{meeting_duration}}", "{{meeting_join_url}}",
+  "{{track_url}}", "{{app_name}}",
 ];
 
 export function TemplateEditor({ id, initialName, initialSubject, initialBody, initialBlocks }: {
