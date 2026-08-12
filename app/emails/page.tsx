@@ -59,7 +59,7 @@ export default async function EmailsPage({
               </div>
               <details className="mt-3">
                 <summary className="cursor-pointer text-xs font-bold text-blue-700">عرض محتوى الرسالة</summary>
-                <iframe title={m.id} className="mt-2 h-80 w-full rounded-lg border" sandbox="" srcDoc={m.body_html} />
+                <iframe title={m.id} className="mt-2 h-80 w-full rounded-lg border" sandbox="allow-popups" srcDoc={m.body_html} />
               </details>
             </Card>
           ))}
