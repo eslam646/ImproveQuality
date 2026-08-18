@@ -97,10 +97,10 @@ export default async function TicketDetailsPage({
     : actor.role === "support" ? ALL_STATUSES.filter((s) => s !== ticket.dev_status) : allowedTransitions(actor.role, ticket.dev_status);
   const noteLabel = actor.role === "developer" ? "ملاحظات الديف" : actor.role === "tester" ? "ملاحظات التيست" : "ملاحظة مدخل البيانات";
   const canNote = perms.add_note && (perms.view_all_tickets || ticket.created_by === actor.id || isAssignedTester || isAssignedDev);
-  // الدعم الفوري «طلب جانبي»: المكلَّف الذي قَبِل يحدّث موقفه (مازلت أعمل / انتهيت) حتى ينتهي الدعم
+  // الدعم الفوري «طلب جانبي»: المكلَّف الذي قَبِل يحدّث موقفه (مازلت أعمل / انتهيت) — والأدمن يقدر أيضاً (يُسجل باسمه)
   const urgentEnded = !!ticket.urgent_ended_at;
   const canUpdateUrgentProgress = !!ticket.is_urgent && !urgentEnded && perms.update_urgent_progress
-    && (isAssignedTester || isAssignedDev) && myAssignmentStatus === "accepted";
+    && (actor.role === "admin" || ((isAssignedTester || isAssignedDev) && myAssignmentStatus === "accepted"));
   const hasActions = canAssignTester || canAssignDev || canEstimate || canNote || isAssignedTester || isAssignedDev || transitions.length > 0 || canUpdateUrgentProgress;
 
   return (
@@ -315,7 +315,7 @@ export default async function TicketDetailsPage({
                 )}
 
                 {canUpdateUrgentProgress && (
-                  <UrgentProgressForm code={ticket.code} roleLabel={isAssignedTester ? "التيست" : "المطوّر"} />
+                  <UrgentProgressForm code={ticket.code} roleLabel={isAssignedTester ? "التيست" : isAssignedDev ? "المطوّر" : "مدير النظام (إجراء إداري يُسجل باسمك)"} />
                 )}
 
                 {!!ticket.is_urgent && !urgentEnded && perms.assignment_decision && (isAssignedTester || isAssignedDev) && myAssignmentStatus === "accepted" && (
