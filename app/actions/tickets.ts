@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { canManage, requireActionPermission, requirePerm, requireStaff } from "@/lib/auth";
 import {
   addNoteOp, assignDeveloperOp, assignTesterOp, changeStatusOp, createTicketOp,
-  declineAssignmentOp, respondToAssignmentOp, setEstimationOp,
+  declineAssignmentOp, respondToAssignmentOp, setEstimationOp, updateUrgentProgressOp,
 } from "@/lib/ops";
 import { getRepo } from "@/lib/db";
 import type { DevStatus, RequestType } from "@/lib/types";
@@ -273,6 +273,29 @@ export async function declineAssignmentAction(formData: FormData) {
   const r = await declineAssignmentOp(t.id, { staff_id: actor.id, name: actor.name, role: actor.role }, reason);
   revalidatePath(`/tickets/${code}`);
   redirect(`/tickets/${code}?${r.ok ? `ok=${enc("تم تسجيل اعتذارك وإبلاغ مدخل البيانات والإدارة ✓")}` : `err=${enc(r.error ?? "تعذر الاعتذار")}`}`);
+}
+
+// ═══ الدعم الفوري «طلب جانبي» — تحديث الموقف: مازلت أعمل / انتهيت فينتهي الدعم ═══
+export async function updateUrgentProgressAction(formData: FormData) {
+  const actor = await requireActionPermission("update_urgent_progress", ["tester", "developer", "admin"]);
+  const code = String(formData.get("code") ?? "");
+  const progress = String(formData.get("progress") ?? "") as "still_working" | "done";
+  const note = String(formData.get("note") ?? "").trim();
+  if (!["still_working", "done"].includes(progress)) redirect(`/tickets/${code}?err=${enc("تحديث الموقف غير صحيح")}`);
+  const repo = await getRepo();
+  const t = await repo.ticketByCode(code);
+  if (!t) redirect("/dashboard");
+  const r = await updateUrgentProgressOp(
+    t.id,
+    { staff_id: actor.id, name: actor.name, role: actor.role },
+    progress,
+    note || undefined,
+  );
+  revalidatePath(`/tickets/${code}`);
+  revalidatePath("/dashboard");
+  redirect(`/tickets/${code}?${r.ok
+    ? `ok=${enc(progress === "done" ? "تم إنهاء الدعم الفوري لهذه النقطة وإبلاغ مدخل البيانات والإدارة ✓" : "تم تسجيل أنك مازلت تعمل على هذه النقطة وإبلاغ المعنيين ✓")}`
+    : `err=${enc(r.error ?? "تعذر تحديث الموقف")}`}`);
 }
 
 // ═══ تحديث تقدير التنفيذ (ساعات/أيام) — يظهر في الطلب والاستعلام ═══

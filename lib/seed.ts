@@ -50,6 +50,13 @@ export const SEED_TEMPLATES: EmailTemplate[] = [
     created_at: nowIso(), updated_at: nowIso(),
   },
   {
+    id: "tmpl-urgent-progress", name: "تحديث موقف الدعم الفوري (مازلت أعمل / انتهيت)",
+    subject: "{{progress_label}} — الدعم الفوري {{code}} بواسطة {{actor_name}}",
+    body_html: `<b>{{actor_name}}</b> ({{actor_role}}) حدّث موقف الدعم الفوري الجانبي.<br><b>الموقف:</b> {{progress_label}}<br>{{note}}`,
+    blocks: { ...DEFAULT_TEMPLATE_BLOCKS, status: true, note: false, update_button: false },
+    created_at: nowIso(), updated_at: nowIso(),
+  },
+  {
     id: "tmpl-urgent-withdrawal", name: "اعتذار عن الدعم الفوري",
     subject: "🙅 اعتذار {{actor_role}} عن الدعم الفوري {{code}} — {{actor_name}}",
     body_html: `<b>{{actor_name}}</b> ({{actor_role}}) اعتذر عن الاستمرار في الدعم الفوري.<br><b>سبب الاعتذار:</b> {{reason}}<br>عادت المهمة لانتظار إعادة الإسناد.`,

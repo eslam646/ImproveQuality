@@ -307,6 +307,10 @@ export async function createSupabaseRepo(): Promise<Repo> {
       }).eq("id", id).select().maybeSingle();
       return (data as TicketAssignment) ?? null;
     },
+    async assignmentComplete(ticketId, role) {
+      await sb.from("ticket_assignments").update({ status: "completed", completed_at: nowIso() })
+        .eq("ticket_id", ticketId).eq("assignment_role", role).eq("is_current", true);
+    },
     async assignmentList(ticketId) {
       return (must(await sb.from("ticket_assignments").select("*").eq("ticket_id", ticketId).order("assigned_at", { ascending: false })) as TicketAssignment[]) ?? [];
     },

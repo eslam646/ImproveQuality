@@ -381,7 +381,7 @@ export type PermKey =
   | "view_all_tickets" | "view_own_created" | "view_assigned_tickets" | "view_audit"
   // إجراءات التذكرة
   | "create_standard_ticket" | "create_instant_support" | "edit_ticket_fields" | "assign_tester" | "assign_developer"
-  | "set_estimation" | "change_status" | "add_note" | "upload_attachment" | "assignment_decision"
+  | "set_estimation" | "change_status" | "add_note" | "upload_attachment" | "assignment_decision" | "update_urgent_progress"
   // إدارة وتشغيل
   | "manage_private_links" | "resend_email" | "manage_meetings" | "join_meetings";
 
@@ -393,7 +393,8 @@ export const PERM_LABELS: Record<PermKey, string> = {
   create_standard_ticket: "إنشاء طلب عادي", create_instant_support: "إنشاء دعم فوري", edit_ticket_fields: "تعديل بيانات الطلب",
   assign_tester: "إسناد / تغيير التيستر", assign_developer: "إسناد / تغيير المطور", set_estimation: "تعديل التقدير",
   change_status: "تغيير الحالة المسموحة للدور", add_note: "إضافة ملاحظات", upload_attachment: "رفع مرفقات بعد الإنشاء",
-  assignment_decision: "قبول / رفض التكليف", manage_private_links: "إدارة الروابط الخاصة", resend_email: "إعادة إرسال البريد",
+  assignment_decision: "قبول / رفض التكليف", update_urgent_progress: "تحديث تقدم الدعم الفوري (مازلت أعمل / انتهيت)",
+  manage_private_links: "إدارة الروابط الخاصة", resend_email: "إعادة إرسال البريد",
   manage_meetings: "إنشاء / إلغاء اجتماعات Teams", join_meetings: "رؤية رابط الاجتماع والانضمام",
 };
 
@@ -407,21 +408,21 @@ export const DEFAULT_ROLE_PERMISSIONS: RolePermissions = {
     dashboard: true, new_ticket: true, testing: false, automation: false, templates: false, staff: false, emails: false, settings: false, export_csv: true,
     view_all_tickets: false, view_own_created: true, view_assigned_tickets: false, view_audit: false,
     create_standard_ticket: true, create_instant_support: true, edit_ticket_fields: false, assign_tester: false, assign_developer: false,
-    set_estimation: false, change_status: false, add_note: true, upload_attachment: false, assignment_decision: false,
+    set_estimation: false, change_status: false, add_note: true, upload_attachment: false, assignment_decision: false, update_urgent_progress: false,
     manage_private_links: false, resend_email: false, manage_meetings: false, join_meetings: true,
   },
   developer: {
     dashboard: true, new_ticket: false, testing: false, automation: false, templates: false, staff: false, emails: false, settings: false, export_csv: false,
     view_all_tickets: false, view_own_created: false, view_assigned_tickets: true, view_audit: false,
     create_standard_ticket: false, create_instant_support: false, edit_ticket_fields: false, assign_tester: false, assign_developer: false,
-    set_estimation: false, change_status: true, add_note: true, upload_attachment: true, assignment_decision: true,
+    set_estimation: false, change_status: true, add_note: true, upload_attachment: true, assignment_decision: true, update_urgent_progress: true,
     manage_private_links: false, resend_email: false, manage_meetings: false, join_meetings: true,
   },
   tester: {
     dashboard: true, new_ticket: false, testing: true, automation: false, templates: false, staff: false, emails: false, settings: false, export_csv: false,
     view_all_tickets: false, view_own_created: false, view_assigned_tickets: true, view_audit: false,
     create_standard_ticket: false, create_instant_support: false, edit_ticket_fields: false, assign_tester: false, assign_developer: true,
-    set_estimation: false, change_status: true, add_note: true, upload_attachment: true, assignment_decision: true,
+    set_estimation: false, change_status: true, add_note: true, upload_attachment: true, assignment_decision: true, update_urgent_progress: true,
     manage_private_links: false, resend_email: false, manage_meetings: false, join_meetings: true,
   },
 };

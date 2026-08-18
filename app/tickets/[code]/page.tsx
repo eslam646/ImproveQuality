@@ -11,6 +11,7 @@ import { allowedTransitions, ALL_STATUSES, ASSIGNMENT_STATUS_LABELS, REQUEST_TYP
 import { fmtDate, parseFileRef } from "@/lib/util";
 import { AttachmentUpload } from "@/components/attachment-upload";
 import { StatusChangeForm } from "@/components/status-change-form";
+import { UrgentProgressForm } from "@/components/urgent-progress-form";
 import type { DevStatus, TicketEvent } from "@/lib/types";
 import { TeamsMeetings } from "@/components/teams-meetings";
 import { teamsConfigStatus } from "@/lib/teams";
@@ -95,7 +96,11 @@ export default async function TicketDetailsPage({
     : actor.role === "support" ? ALL_STATUSES.filter((s) => s !== ticket.dev_status) : allowedTransitions(actor.role, ticket.dev_status);
   const noteLabel = actor.role === "developer" ? "ملاحظات الديف" : actor.role === "tester" ? "ملاحظات التيست" : "ملاحظة مدخل البيانات";
   const canNote = perms.add_note && (perms.view_all_tickets || ticket.created_by === actor.id || isAssignedTester || isAssignedDev);
-  const hasActions = canAssignTester || canAssignDev || canEstimate || canNote || isAssignedTester || isAssignedDev || transitions.length > 0;
+  // الدعم الفوري «طلب جانبي»: المكلَّف الذي قَبِل يحدّث موقفه (مازلت أعمل / انتهيت) حتى ينتهي الدعم
+  const urgentEnded = !!ticket.urgent_ended_at;
+  const canUpdateUrgentProgress = !!ticket.is_urgent && !urgentEnded && perms.update_urgent_progress
+    && (isAssignedTester || isAssignedDev) && myAssignmentStatus === "accepted";
+  const hasActions = canAssignTester || canAssignDev || canEstimate || canNote || isAssignedTester || isAssignedDev || transitions.length > 0 || canUpdateUrgentProgress;
 
   return (
     <div className="mx-auto max-w-5xl space-y-5">
@@ -103,7 +108,11 @@ export default async function TicketDetailsPage({
         <div className="flex items-center gap-3">
           <h1 className="text-2xl font-extrabold" dir="ltr">{ticket.code}</h1>
           <Badge color={STATUS_COLORS[ticket.dev_status]}>{STATUS_LABELS[ticket.dev_status]}</Badge>
-          {!!ticket.is_urgent && <Badge color="bg-red-600 text-white">🚨 دعم فوري</Badge>}
+          {!!ticket.is_urgent && (
+            ticket.urgent_ended_at
+              ? <Badge color="bg-emerald-600 text-white">✅ دعم فوري — انتهى</Badge>
+              : <Badge color="bg-red-600 text-white">🚨 دعم فوري — طلب جانبي</Badge>
+          )}
         </div>
         <div className="flex gap-2 text-sm">
           <Link href="/dashboard" className="rounded-lg bg-white px-3 py-1.5 shadow-sm hover:bg-slate-50">→ رجوع للتذاكر</Link>
@@ -142,6 +151,32 @@ export default async function TicketDetailsPage({
             </dl>
             <div className="mt-4 rounded-lg bg-slate-50 p-3 text-sm leading-relaxed">{ticket.details}</div>
           </Card>
+
+          {/* الدعم الفوري كطلب جانبي — ملخص دورة حياته */}
+          {!!ticket.is_urgent && (
+            <Card title={urgentEnded ? "✅ الدعم الفوري (طلب جانبي) — انتهى" : "🚨 الدعم الفوري (طلب جانبي) — جارٍ"}>
+              <div className={`rounded-xl border p-3 text-sm ${urgentEnded ? "border-emerald-200 bg-emerald-50" : "border-rose-200 bg-rose-50"}`}>
+                <p className={urgentEnded ? "text-emerald-800" : "text-rose-800"}>
+                  {urgentEnded
+                    ? "انتهى الدعم الخاص بهذه النقطة — النقطة الجانبية أُغلقت ولا تحتاج متابعة إضافية."
+                    : "طلب جانبي لمساعدة السبورت في نقطة محددة — يبقى مفتوحاً حتى يعلن المكلَّف أنه انتهى منها."}
+                </p>
+                <dl className="mt-3 grid grid-cols-2 gap-x-6 gap-y-2 text-sm md:grid-cols-3">
+                  <div><dt className="text-slate-400">بدء العمل</dt><dd className="font-semibold">{ticket.urgent_started_at ? fmtDate(ticket.urgent_started_at) : "لم يبدأ بعد (بانتظار قبول التكليف)"}</dd></div>
+                  <div><dt className="text-slate-400">انتهاء الدعم</dt><dd className="font-semibold">{ticket.urgent_ended_at ? fmtDate(ticket.urgent_ended_at) : "—"}</dd></div>
+                  {!!ticket.actual_minutes && (
+                    <div><dt className="text-slate-400">المدة الفعلية</dt><dd className="font-semibold">{ticket.actual_minutes >= 60 ? `${Math.floor(ticket.actual_minutes / 60)} س ${ticket.actual_minutes % 60} د` : `${ticket.actual_minutes} دقيقة`} تقريباً</dd></div>
+                  )}
+                </dl>
+                {ticket.urgent_result && (
+                  <div className="mt-3 rounded-lg border border-emerald-200 bg-white p-3">
+                    <p className="text-xs font-bold text-slate-400">نتيجة الدعم</p>
+                    <p className="mt-1 text-sm leading-relaxed">{ticket.urgent_result}</p>
+                  </div>
+                )}
+              </div>
+            </Card>
+          )}
 
           {/* الحقول المخصصة (منشئ الحقول من الإعدادات) */}
           {customEntries.length > 0 && (
@@ -275,7 +310,11 @@ export default async function TicketDetailsPage({
                   </form>
                 )}
 
-                {!!ticket.is_urgent && perms.assignment_decision && (isAssignedTester || isAssignedDev) && myAssignmentStatus === "accepted" && (
+                {canUpdateUrgentProgress && (
+                  <UrgentProgressForm code={ticket.code} roleLabel={isAssignedTester ? "التيست" : "المطوّر"} />
+                )}
+
+                {!!ticket.is_urgent && !urgentEnded && perms.assignment_decision && (isAssignedTester || isAssignedDev) && myAssignmentStatus === "accepted" && (
                   <form action={declineAssignmentAction} className="space-y-2 rounded-xl border border-rose-200 bg-rose-50 p-3">
                     <input type="hidden" name="code" value={ticket.code} />
                     <Field label={`الاعتذار عن الدعم الفوري (أنت ${isAssignedTester ? "التيست" : "المطوّر"} المسند)`} hint="خاص بالدعم الفوري فقط — السبب إجباري، ويصل إيميل لمقدم الطلب والإدارة ثم تعود المهمة لإعادة الإسناد">

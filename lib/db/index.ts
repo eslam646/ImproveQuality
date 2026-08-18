@@ -65,6 +65,7 @@ export interface Repo {
   }): Promise<TicketAssignment>;
   assignmentCurrent(ticketId: string, role: "tester" | "developer"): Promise<TicketAssignment | null>;
   assignmentRespond(id: string, status: "accepted" | "declined", reason?: string | null): Promise<TicketAssignment | null>;
+  assignmentComplete(ticketId: string, role: "tester" | "developer"): Promise<void>;
   assignmentList(ticketId: string): Promise<TicketAssignment[]>;
 
   meetingCreate(m: Omit<Meeting, "id" | "created_at" | "updated_at">): Promise<Meeting>;

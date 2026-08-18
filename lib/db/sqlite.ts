@@ -502,6 +502,10 @@ export function createSqliteRepo(): Repo {
       const r = db.prepare("SELECT * FROM ticket_assignments WHERE id=?").get(id) as (Omit<TicketAssignment, "is_current"> & { is_current: number }) | undefined;
       return r ? { ...r, is_current: !!r.is_current } : null;
     },
+    async assignmentComplete(ticketId, role) {
+      db.prepare("UPDATE ticket_assignments SET status='completed',completed_at=? WHERE ticket_id=? AND assignment_role=? AND is_current=1")
+        .run(nowIso(), ticketId, role);
+    },
     async assignmentList(ticketId) {
       const rows = db.prepare("SELECT * FROM ticket_assignments WHERE ticket_id=? ORDER BY assigned_at DESC").all(ticketId) as (Omit<TicketAssignment, "is_current"> & { is_current: number })[];
       return rows.map((r) => ({ ...r, is_current: !!r.is_current }));

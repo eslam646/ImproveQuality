@@ -323,6 +323,8 @@ export async function respondToAssignmentOp(
           : { developer_id: null, developer_name: null, overall_status: "awaiting_developer" as const }),
         updated_at: nowIso(),
       };
+  // الدعم الفوري «طلب جانبي»: القبول يبدأ عدّاد الدعم فعلياً
+  if (accepted && ticket.is_urgent && !ticket.urgent_started_at) patch.urgent_started_at = nowIso();
   const updated = await repo.ticketUpdate(ticket.id, patch);
   if (!updated) return { ok: false, error: "تعذر تحديث الطلب" };
 
@@ -423,6 +425,117 @@ export async function declineAssignmentOp(
     bodyHtml,
     notifyTo: ["creator"],
     notifyMessage: `🙅 ${actor.name} اعتذر عن ${t.code}: ${reason.slice(0, 80)}`,
+  });
+  return { ok: true };
+}
+
+// ═══ الدعم الفوري «طلب جانبي»: تحديث الموقف — مازلت أعمل / انتهيت فينتهي الدعم ═══
+export async function updateUrgentProgressOp(
+  ticketId: string,
+  actor: { staff_id: string; name: string; role: Role },
+  progress: "still_working" | "done",
+  note?: string,
+): Promise<{ ok: boolean; error?: string }> {
+  const repo = await getRepo();
+  const t = await repo.ticketById(ticketId);
+  if (!t) return { ok: false, error: "الطلب غير موجود" };
+  if (!t.is_urgent) return { ok: false, error: "تحديث الموقف متاح لطلبات الدعم الفوري فقط" };
+  if (t.urgent_ended_at) return { ok: false, error: "هذا الدعم الفوري انتهى بالفعل — لا يمكن تحديث موقفه" };
+
+  const isTester = actor.role === "tester" && t.tester_id === actor.staff_id;
+  const isDev = actor.role === "developer" && t.developer_id === actor.staff_id;
+  const isAdmin = actor.role === "admin";
+  if (!isTester && !isDev && !isAdmin) return { ok: false, error: "هذه النقطة غير مسندة إليك حالياً" };
+
+  const actorLabel = `${actor.name} (${ROLE_LABELS[actor.role]})`;
+  const done = progress === "done";
+  if (done && (!note || note.trim().length < 3)) {
+    return { ok: false, error: "اكتب باختصار نتيجة الدعم قبل الإنهاء — تُرسل بالإيميل وتُحفظ في السجل" };
+  }
+
+  const now = nowIso();
+  const startedAt = t.urgent_started_at ?? t.created_at;
+  const minutes = Math.max(1, Math.round((Date.parse(now) - Date.parse(startedAt)) / 60000));
+
+  let updated: Ticket;
+  if (done) {
+    const u = await repo.ticketUpdate(ticketId, {
+      urgent_started_at: t.urgent_started_at ?? startedAt,
+      urgent_ended_at: now,
+      urgent_result: note!.trim(),
+      actual_minutes: minutes,
+      tester_assignment_status: t.tester_id ? "completed" : t.tester_assignment_status,
+      developer_assignment_status: t.developer_id ? "completed" : t.developer_assignment_status,
+      overall_status: "closed",
+      dev_status: "closed",
+      last_status_change: now,
+      updated_at: now,
+    });
+    if (!u) return { ok: false, error: "تعذر إنهاء الدعم الفوري" };
+    updated = u;
+    if (t.tester_id) await repo.assignmentComplete(ticketId, "tester");
+    if (t.developer_id) await repo.assignmentComplete(ticketId, "developer");
+  } else {
+    // «مازلت في الطلب»: يثبت بداية العمل إن لم تكن مسجلة ويحدّث آخر نشاط
+    const u = await repo.ticketUpdate(ticketId, {
+      urgent_started_at: t.urgent_started_at ?? now,
+      overall_status: "in_development",
+      dev_status: t.dev_status === "new" ? "in_progress" : t.dev_status,
+      updated_at: now,
+    });
+    if (!u) return { ok: false, error: "تعذر تحديث الموقف" };
+    updated = u;
+  }
+
+  const progressText = done ? "✅ انتهيت — انتهى الدعم الفوري لهذه النقطة" : "🔄 مازلت أعمل على هذه النقطة";
+  await repo.eventAdd({
+    ticket_id: ticketId, type: "note.added", actor_label: actorLabel,
+    old_values: null,
+    new_values: { note: `${progressText}${note?.trim() ? ` — ${note.trim()}` : ""}${done ? ` (المدة الفعلية: ${minutes} دقيقة تقريباً)` : ""}` },
+  });
+  await repo.auditAdd({
+    entity_type: "ticket", entity_id: ticketId, action: done ? "urgent.completed" : "urgent.still_working",
+    actor_staff_id: actor.staff_id, actor_label: actorLabel,
+    old_values: { dev_status: t.dev_status, urgent_started_at: t.urgent_started_at, urgent_ended_at: t.urgent_ended_at },
+    new_values: { progress, note: note?.trim() || null, ...(done ? { actual_minutes: minutes } : {}) },
+  });
+
+  // بريد الموقف: قالب مركزي قابل للتعديل من صفحة القوالب
+  const settings = await repo.settingsGet();
+  const admins = (await repo.staffList(true)).filter((s) => s.role === "admin").map((s) => s.email).filter((e) => e && e.includes("@"));
+  const tmpl = await repo.templateGet("tmpl-urgent-progress");
+  const vars = {
+    ...templateVars(updated, settings),
+    actor_name: actor.name,
+    actor_role: ROLE_LABELS[actor.role],
+    progress_label: done ? "انتهى الدعم الفوري ✅" : "مازال العمل جارياً 🔄",
+    note: note?.trim() ?? "",
+    duration_minutes: done ? String(minutes) : "",
+  };
+  const fallbackSubject = done
+    ? `✅ انتهى الدعم الفوري ${t.code} — ${actor.name}`
+    : `🔄 ${actor.name} مازال يعمل على الدعم الفوري ${t.code}`;
+  const subject = tmpl ? renderTemplate(tmpl.subject, vars, { htmlEscape: false }) : fallbackSubject;
+  const bodyHtml = tmpl
+    ? renderBlocks(vars, { ...DEFAULT_TEMPLATE_BLOCKS, ...(tmpl.blocks ?? {}) }, renderTemplate(tmpl.body_html, vars))
+    : `<p><b>${esc(actorLabel)}</b> حدّث موقف الدعم الفوري <b dir="ltr">${esc(t.code)}</b> (${esc(t.client_name)}):</p>
+       <p style="background:${done ? "#f0fdf4;border:1px solid #bbf7d0" : "#eff6ff;border:1px solid #bfdbfe"};border-radius:8px;padding:12px">
+         <b>${done ? "✅ انتهى الدعم الفوري لهذه النقطة" : "🔄 مازال العمل جارياً على هذه النقطة"}</b>
+         ${note?.trim() ? `<br>${esc(note.trim()).replaceAll("\n", "<br>")}` : ""}
+         ${done ? `<br><span style="color:#64748b">المدة الفعلية: ${minutes} دقيقة تقريباً</span>` : ""}
+       </p>`;
+  await mailParties({
+    ticket: updated,
+    to: ["creator"],
+    cc: isTester ? ["developer"] : ["tester"],
+    extraTo: admins,
+    excludeStaffId: actor.staff_id,
+    subject,
+    bodyHtml,
+    notifyTo: ["creator"],
+    notifyMessage: done
+      ? `✅ ${actor.name} أنهى الدعم الفوري ${t.code}`
+      : `🔄 ${actor.name} مازال يعمل على ${t.code}`,
   });
   return { ok: true };
 }
