@@ -7,7 +7,7 @@ import {
   declineAssignmentAction, respondToAssignmentAction, setEstimationAction,
 } from "@/app/actions/tickets";
 import { Badge, Button, Card, Field, Msg, selectCls, inputCls } from "@/components/ui";
-import { allowedTransitions, ALL_STATUSES, ASSIGNMENT_STATUS_LABELS, REQUEST_TYPE_LABELS, ROLE_LABELS, STATUS_COLORS, STATUS_LABELS } from "@/lib/labels";
+import { allowedTransitions, ALL_STATUSES, ASSIGNMENT_STATUS_LABELS, REQUEST_TYPE_LABELS, ROLE_LABELS, STATUS_COLORS, STATUS_LABELS, urgentStatusInfo } from "@/lib/labels";
 import { fmtDate, parseFileRef } from "@/lib/util";
 import { AttachmentUpload } from "@/components/attachment-upload";
 import { StatusChangeForm } from "@/components/status-change-form";
@@ -91,7 +91,8 @@ export default async function TicketDetailsPage({
   const canEstimate = perms.set_estimation;
   const canUpload = perms.upload_attachment && (perms.view_all_tickets || isAssignedTester || isAssignedDev);
   const acceptedForRole = actor.role === "tester" ? ticket.tester_assignment_status === "accepted" : actor.role === "developer" ? ticket.developer_assignment_status === "accepted" : true;
-  const transitions = !perms.change_status || !acceptedForRole
+  // الدعم الفوري «طلب جانبي»: لا حالة تطوير له إطلاقاً — حالته من دورة حياته فقط (قبول/اعتذار/جاري/انتهى)
+  const transitions = ticket.is_urgent || !perms.change_status || !acceptedForRole
     ? []
     : actor.role === "support" ? ALL_STATUSES.filter((s) => s !== ticket.dev_status) : allowedTransitions(actor.role, ticket.dev_status);
   const noteLabel = actor.role === "developer" ? "ملاحظات الديف" : actor.role === "tester" ? "ملاحظات التيست" : "ملاحظة مدخل البيانات";
@@ -107,11 +108,14 @@ export default async function TicketDetailsPage({
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <h1 className="text-2xl font-extrabold" dir="ltr">{ticket.code}</h1>
-          <Badge color={STATUS_COLORS[ticket.dev_status]}>{STATUS_LABELS[ticket.dev_status]}</Badge>
-          {!!ticket.is_urgent && (
-            ticket.urgent_ended_at
-              ? <Badge color="bg-emerald-600 text-white">✅ دعم فوري — انتهى</Badge>
-              : <Badge color="bg-red-600 text-white">🚨 دعم فوري — طلب جانبي</Badge>
+          {/* الدعم الفوري لا يعرض حالة التطوير — حالته من دورة حياته فقط */}
+          {ticket.is_urgent ? (
+            <>
+              <Badge color="bg-red-600 text-white">🚨 دعم فوري — طلب جانبي</Badge>
+              <Badge color={urgentStatusInfo(ticket).color}>{urgentStatusInfo(ticket).label}</Badge>
+            </>
+          ) : (
+            <Badge color={STATUS_COLORS[ticket.dev_status]}>{STATUS_LABELS[ticket.dev_status]}</Badge>
           )}
         </div>
         <div className="flex gap-2 text-sm">

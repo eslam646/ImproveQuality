@@ -8,6 +8,7 @@ import { ROLE_LABELS, STATUS_LABELS } from "./labels";
 import { DEFAULT_TEMPLATE_BLOCKS } from "./types";
 import type { DevStatus, RequestType, Role, Settings, Staff, Ticket, TicketKind, TicketPriority } from "./types";
 import { escapeHtml, genTicketCode, isEmail, nowIso } from "./util";
+import { assignmentEmailActions } from "./assignment-links";
 
 // ═══ بريد الأطراف المباشر: إيميل + تسجيل + إشعار داخلي ═══
 type PartyRef = "creator" | "tester" | "developer" | "client";
@@ -100,10 +101,13 @@ async function sendTesterAssignmentEmail(ticket: Ticket, actorLabel: string, exc
   const vars = templateVars(ticket, settings);
   const fallbackSubject = `🧪 أُسند إليك اختبار الطلب ${ticket.code}`;
   const subject = tmpl ? renderTemplate(tmpl.subject, vars, { htmlEscape: false }) : fallbackSubject;
-  const bodyHtml = tmpl
+  let bodyHtml = tmpl
     ? renderBlocks(vars, { ...DEFAULT_TEMPLATE_BLOCKS, ...(tmpl.blocks ?? {}) }, renderTemplate(tmpl.body_html, vars))
     : `<p>أُسند إليك اختبار طلب <b dir="ltr">${esc(ticket.code)}</b>${ticket.is_urgent ? " — <b style='color:#dc2626'>دعم فوري عاجل</b>" : ""}</p>
        <p><b>العميل:</b> ${esc(ticket.client_name)}</p><p><b>التفاصيل:</b><br>${esc(ticket.details).replaceAll("\n", "<br>")}</p>`;
+  // أزرار القبول/الاعتذار داخل الإيميل نفسه — موقعة باسم التيستر ولا تحتاج تسجيل دخول
+  const tester = ticket.tester_id ? await repo.staffGet(ticket.tester_id) : null;
+  if (tester) bodyHtml += assignmentEmailActions(settings.base_url, ticket, "tester", tester);
   await mailParties({
     ticket, to: ["tester"], excludeStaffId, subject, bodyHtml,
     notifyTo: ["tester"], notifyMessage: `أُسند إليك اختبار ${ticket.code}${ticket.is_urgent ? " 🚨" : ""}`,

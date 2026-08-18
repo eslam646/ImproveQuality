@@ -1,4 +1,4 @@
-import type { AssignmentStatus, DevStatus, RequestType, Role, TicketKind } from "./types";
+import type { AssignmentStatus, DevStatus, RequestType, Role, Ticket, TicketKind } from "./types";
 
 export const REQUEST_TYPE_LABELS: Record<RequestType, string> = {
   new_development: "طلب تطوير جديد",
@@ -77,3 +77,20 @@ export function allowedTransitions(role: Role, current: DevStatus): DevStatus[] 
 
 // حالات تتطلب ملاحظة إجبارية تُرسل في الإيميل (سبب الرفض / سبب فشل الاختبار)
 export const NOTE_REQUIRED_STATUSES: DevStatus[] = ["rejected", "test_failed"];
+
+// ═══ الدعم الفوري «طلب جانبي» — حالته مشتقة من دورة حياته وليست حالة التطوير ═══
+// المسار: بانتظار قبول التكليف ← (اعتذر؟ إعادة إسناد) ← جاري العمل ← تم الانتهاء
+export function urgentStatusInfo(
+  t: Pick<Ticket, "urgent_ended_at" | "urgent_started_at" | "tester_assignment_status" | "developer_assignment_status">,
+): { label: string; color: string } {
+  if (t.urgent_ended_at) return { label: "✅ تم الانتهاء", color: "bg-emerald-100 text-emerald-800" };
+  if (t.tester_assignment_status === "declined" && t.developer_assignment_status === "declined")
+    return { label: "🙅 اعتذر التيست والديف — بانتظار إعادة الإسناد", color: "bg-rose-100 text-rose-800" };
+  if (t.tester_assignment_status === "declined")
+    return { label: "🙅 اعتذر التيست — بانتظار إعادة الإسناد", color: "bg-rose-100 text-rose-800" };
+  if (t.developer_assignment_status === "declined")
+    return { label: "🙅 اعتذر الديف — بانتظار إعادة الإسناد", color: "bg-rose-100 text-rose-800" };
+  if (t.urgent_started_at || t.tester_assignment_status === "accepted" || t.developer_assignment_status === "accepted")
+    return { label: "🔄 جاري العمل", color: "bg-blue-100 text-blue-800" };
+  return { label: "⏳ بانتظار قبول التكليف", color: "bg-amber-100 text-amber-800" };
+}

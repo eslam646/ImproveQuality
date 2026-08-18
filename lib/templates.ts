@@ -1,7 +1,7 @@
 import { escapeHtml } from "./util";
 import type { Settings, TemplateBlockKey, TemplateBlocks, Ticket } from "./types";
 import { DEFAULT_TEMPLATE_BLOCKS } from "./types";
-import { REQUEST_TYPE_LABELS, STATUS_LABELS, TICKET_KIND_LABELS } from "./labels";
+import { REQUEST_TYPE_LABELS, STATUS_LABELS, TICKET_KIND_LABELS, urgentStatusInfo } from "./labels";
 import type { DevStatus } from "./types";
 
 export const BLOCK_LABELS: Record<TemplateBlockKey, string> = {
@@ -72,7 +72,10 @@ export function templateVars(
     estimation,
     affected_service: ticket.affected_service ?? "غير محدد",
     status: ticket.dev_status,
-    status_label: STATUS_LABELS[ticket.dev_status as DevStatus] ?? ticket.dev_status,
+    // الدعم الفوري «طلب جانبي»: حالته في الإيميلات من دورة حياته وليست حالة التطوير
+    status_label: ticket.is_urgent
+      ? urgentStatusInfo(ticket).label
+      : STATUS_LABELS[ticket.dev_status as DevStatus] ?? ticket.dev_status,
     old_status_label: extra?.old_status
       ? STATUS_LABELS[extra.old_status as DevStatus] ?? extra.old_status
       : "",

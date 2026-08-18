@@ -26,7 +26,7 @@ export default async function PublicUpdateFormPage({
   const accepted = !actor || actor.role === "admin" || actor.role === "support"
     || (actor.role === "tester" && ticket?.tester_assignment_status === "accepted")
     || (actor.role === "developer" && ticket?.developer_assignment_status === "accepted");
-  const canUpdate = !!perms?.change_status && related && accepted;
+  const canUpdate = !!perms?.change_status && related && accepted && !ticket?.is_urgent;
 
   return (
     <div className="mx-auto max-w-xl space-y-4 py-6">
@@ -40,6 +40,8 @@ export default async function PublicUpdateFormPage({
         <EmptyState>
           {code ? <>كود الطلب <b dir="ltr">{code}</b> غير موجود — تأكد من الكود وحاول مجدداً.</> : "أضف كود الطلب إلى الرابط: ‎/update-form?code=T-XXXX‎"}
         </EmptyState>
+      ) : ticket.is_urgent ? (
+        <EmptyState>🚨 هذا طلب دعم فوري (طلب جانبي) — لا يمر بحالات التطوير. يُدار من صفحة الطلب عبر «موقف الدعم الفوري»: مازلت أعمل / انتهيت، أو الاعتذار بسبب.</EmptyState>
       ) : !canUpdate ? (
         <EmptyState>صلاحية تغيير الحالة غير مفعلة لك، أو أن الطلب ليس ضمن نطاق رؤيتك، أو لم تقبل التكليف بعد.</EmptyState>
       ) : (

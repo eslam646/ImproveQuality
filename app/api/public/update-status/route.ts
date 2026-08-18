@@ -23,6 +23,9 @@ export async function POST(req: Request) {
   }
   const t = await repo.ticketByCode(parsed.data.code);
   if (!t) return NextResponse.json({ error: "كود الطلب غير موجود" }, { status: 404 });
+  if (t.is_urgent) {
+    return NextResponse.json({ error: "الدعم الفوري لا يمر بحالات التطوير — يُدار من صفحة الطلب عبر «موقف الدعم الفوري» فقط" }, { status: 403 });
+  }
   const actor = await currentStaff();
   if (!actor) return NextResponse.json({ error: "يجب تسجيل الدخول" }, { status: 401 });
   const perms = await permissionsForStaff(actor);

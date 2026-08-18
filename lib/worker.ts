@@ -3,6 +3,7 @@ import { getRepo } from "./db";
 import { enqueueStaleReminders, recipientEmails, resolveRecipients } from "./engine";
 import { sendMail } from "./email";
 import { renderBlocks, renderTemplate, templateVars, wrapEmail } from "./templates";
+import { assignmentEmailActions } from "./assignment-links";
 import { DEFAULT_TEMPLATE_BLOCKS } from "./types";
 import type { Action, DevStatus, Job, Settings } from "./types";
 import { nowIso } from "./util";
@@ -69,7 +70,16 @@ async function executeJob(job: Job, settings: Settings): Promise<void> {
     const subject = renderTemplate(tmpl.subject, vars, { htmlEscape: false });
     const intro = renderTemplate(tmpl.body_html, vars);
     // القالب له أقسام مرئية يتحكم بها الأدمن — الافتراضي عند عدم التخصيص
-    const bodyInner = renderBlocks(vars, { ...DEFAULT_TEMPLATE_BLOCKS, ...(tmpl.blocks ?? {}) }, intro);
+    let bodyInner = renderBlocks(vars, { ...DEFAULT_TEMPLATE_BLOCKS, ...(tmpl.blocks ?? {}) }, intro);
+    // لو الإيميل موجه للمكلَّف وقراره ما زال معلقاً → ألحق أزرار القبول/الاعتذار الموقعة داخل الإيميل
+    const devStaff = ticket.developer_id ? await repo.staffGet(ticket.developer_id) : null;
+    if (devStaff?.email && to.includes(devStaff.email.toLowerCase()) && ticket.developer_assignment_status === "pending") {
+      bodyInner += assignmentEmailActions(settings.base_url, ticket, "developer", devStaff);
+    }
+    const testerStaff = ticket.tester_id ? await repo.staffGet(ticket.tester_id) : null;
+    if (testerStaff?.email && to.includes(testerStaff.email.toLowerCase()) && ticket.tester_assignment_status === "pending") {
+      bodyInner += assignmentEmailActions(settings.base_url, ticket, "tester", testerStaff);
+    }
     const html = wrapEmail(subject, bodyInner, settings);
 
     const log = await repo.emailLogAdd({

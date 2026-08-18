@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getRepo } from "@/lib/db";
-import { ASSIGNMENT_STATUS_LABELS, REQUEST_TYPE_LABELS, STATUS_LABELS, TICKET_KIND_LABELS } from "@/lib/labels";
+import { ASSIGNMENT_STATUS_LABELS, REQUEST_TYPE_LABELS, STATUS_LABELS, TICKET_KIND_LABELS, urgentStatusInfo } from "@/lib/labels";
 import type { DevStatus } from "@/lib/types";
 import { clientIp, rateLimit } from "@/lib/ratelimit";
 
@@ -26,7 +26,8 @@ export async function GET(req: Request) {
 
   const body: Record<string, unknown> = {
     code: t.code,
-    status_label: STATUS_LABELS[t.dev_status],
+    // الدعم الفوري «طلب جانبي»: حالته من دورة حياته وليست حالة التطوير
+    status_label: t.is_urgent ? urgentStatusInfo(t).label : STATUS_LABELS[t.dev_status],
     display_order: cfg.order ?? [],
   };
   if (cfg.show_last_change) body.last_status_change = t.last_status_change;
