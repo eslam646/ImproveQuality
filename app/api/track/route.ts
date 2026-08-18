@@ -53,17 +53,38 @@ export async function GET(req: Request) {
       .map((f) => ({ label: f.label, value: t.custom_data![f.key], file: f.type === "file" }));
   }
   if (cfg.show_timeline) {
-    const events = await repo.eventList(t.id);
-    body.timeline = [
-      { status_label: "تم إنشاء الطلب", at: t.created_at },
-      ...events
-        .filter((e) => e.type === "field.changed")
-        .reverse()
-        .map((e) => ({
-          status_label: STATUS_LABELS[(e.new_values as { dev_status: DevStatus }).dev_status] ?? "",
-          at: e.created_at,
-        })),
-    ];
+    if (t.is_urgent) {
+      // الدعم الفوري «طلب جانبي»: المسار من دورة حياته — من سجل التدقيق (بالأسماء، بدون أسباب داخلية)
+      const audit = await repo.auditList("ticket", t.id);
+      const nameOf = (label: string | null) => (label ?? "").split(" (")[0] || "—";
+      const steps: { status_label: string; at: string }[] = [{ status_label: "🚨 تم تسجيل طلب الدعم الفوري", at: t.created_at }];
+      for (const a of [...audit].reverse()) {
+        const who = nameOf(a.actor_label);
+        if (a.action === "tester.assigned") steps.push({ status_label: `🧪 أُسند الاختبار إلى ${String((a.new_values as { tester_name?: string })?.tester_name ?? "—")}`, at: a.created_at });
+        else if (a.action === "developer.assigned") steps.push({ status_label: `👨‍💻 أُسند التطوير إلى ${String((a.new_values as { developer_name?: string })?.developer_name ?? "—")}`, at: a.created_at });
+        else if (a.action === "tester.accepted") steps.push({ status_label: `✅ وافق التيستر ${who} على التكليف`, at: a.created_at });
+        else if (a.action === "tester.declined") steps.push({ status_label: `❌ رفض التيستر ${who} التكليف — بانتظار إعادة الإسناد`, at: a.created_at });
+        else if (a.action === "developer.accepted") steps.push({ status_label: `✅ وافق المطور ${who} على التكليف`, at: a.created_at });
+        else if (a.action === "developer.declined") steps.push({ status_label: `❌ رفض المطور ${who} التكليف — بانتظار إعادة الإسناد`, at: a.created_at });
+        else if (a.action === "tester.urgent_withdrawal") steps.push({ status_label: `🙅 اعتذر التيستر ${who} عن الاستمرار — بانتظار إعادة الإسناد`, at: a.created_at });
+        else if (a.action === "developer.urgent_withdrawal") steps.push({ status_label: `🙅 اعتذر المطور ${who} عن الاستمرار — بانتظار إعادة الإسناد`, at: a.created_at });
+        else if (a.action === "urgent.still_working") steps.push({ status_label: `🔄 ${who} مازال يعمل على النقطة`, at: a.created_at });
+        else if (a.action === "urgent.completed") steps.push({ status_label: `✅ ${who} أنهى الدعم الفوري — انتهت هذه النقطة`, at: a.created_at });
+      }
+      body.timeline = steps;
+    } else {
+      const events = await repo.eventList(t.id);
+      body.timeline = [
+        { status_label: "تم إنشاء الطلب", at: t.created_at },
+        ...events
+          .filter((e) => e.type === "field.changed")
+          .reverse()
+          .map((e) => ({
+            status_label: STATUS_LABELS[(e.new_values as { dev_status: DevStatus }).dev_status] ?? "",
+            at: e.created_at,
+          })),
+      ];
+    }
   }
 
   return NextResponse.json(body);
