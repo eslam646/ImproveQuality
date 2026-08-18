@@ -116,6 +116,10 @@ export function createSqliteRepo(): Repo {
   try { db.exec("ALTER TABLE tickets ADD COLUMN tester_name TEXT"); } catch { /* موجود */ }
   try { db.exec("ALTER TABLE tickets ADD COLUMN est_hours REAL"); } catch { /* موجود */ }
   try { db.exec("ALTER TABLE tickets ADD COLUMN est_days REAL"); } catch { /* موجود */ }
+  try { db.exec("ALTER TABLE tickets ADD COLUMN dev_est_days REAL"); } catch { /* موجود */ }
+  try { db.exec("ALTER TABLE tickets ADD COLUMN dev_est_hours REAL"); } catch { /* موجود */ }
+  try { db.exec("ALTER TABLE tickets ADD COLUMN test_est_days REAL"); } catch { /* موجود */ }
+  try { db.exec("ALTER TABLE tickets ADD COLUMN test_est_hours REAL"); } catch { /* موجود */ }
   try { db.exec("ALTER TABLE tickets ADD COLUMN is_urgent INTEGER NOT NULL DEFAULT 0"); } catch { /* موجود */ }
   try { db.exec("ALTER TABLE tickets ADD COLUMN title TEXT"); } catch { /* موجود */ }
   try { db.exec("ALTER TABLE tickets ADD COLUMN request_type TEXT NOT NULL DEFAULT 'issue'"); } catch { /* موجود */ }
@@ -459,7 +463,7 @@ export function createSqliteRepo(): Repo {
         "tester_assignment_status", "developer_assignment_status", "linked_ticket_id", "urgent_reason", "affected_service",
         "urgent_requested_at", "urgent_started_at", "urgent_ended_at", "urgent_result", "actual_minutes", "version",
         "developer_id", "developer_name", "dev_status", "last_status_change", "updated_at", "tester_id", "tester_name",
-        "est_hours", "est_days", "is_urgent",
+        "est_hours", "est_days", "dev_est_days", "dev_est_hours", "test_est_days", "test_est_hours", "is_urgent",
       ] as const;
       for (const k of fields) {
         if (patch[k] !== undefined) { sets.push(`${k}=?`); args.push(patch[k] as unknown); }

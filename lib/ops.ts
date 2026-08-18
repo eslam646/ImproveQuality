@@ -231,8 +231,14 @@ export async function assignTesterOp(
     overall_status: "awaiting_tester",
     updated_at: nowIso(),
   };
-  if (est?.days != null) patch.est_days = est.days;
-  if (est?.hours != null) patch.est_hours = est.hours;
+  // التقدير المدخل مع إسناد التيست = تقدير التيست — والإجمالي يُجمع تلقائياً
+  if (est?.days != null) patch.test_est_days = est.days;
+  if (est?.hours != null) patch.test_est_hours = est.hours;
+  if (est?.days != null || est?.hours != null) {
+    const totals = sumEstimation({ ...old, ...patch });
+    patch.est_days = totals.est_days;
+    patch.est_hours = totals.est_hours;
+  }
   const ticket = await repo.ticketUpdate(ticketId, patch);
   if (!ticket) return null;
   await repo.assignmentCreate({ ticket_id: ticket.id, assignment_role: "tester", staff_id: testerId, assigned_by: assignedBy });
@@ -250,16 +256,49 @@ export async function assignTesterOp(
   return ticket;
 }
 
-// ═══ تحديث تقدير التنفيذ (أيام/ساعات) ═══
-export async function setEstimationOp(ticketId: string, est: { days?: number | null; hours?: number | null }): Promise<Ticket | null> {
+// ═══ التقدير المنفصل: الديف يضع تقديره والتيست يضع تقديره — والإجمالي يُجمع تلقائياً ═══
+// est_days/est_hours الإجمالية هي المعروضة في الطلب والاستعلام والإيميلات
+function sumEstimation(t: Pick<Ticket, "dev_est_days" | "dev_est_hours" | "test_est_days" | "test_est_hours" | "est_days" | "est_hours">): { est_days: number | null; est_hours: number | null } {
+  const hasSplit = t.dev_est_days != null || t.dev_est_hours != null || t.test_est_days != null || t.test_est_hours != null;
+  if (!hasSplit) return { est_days: t.est_days ?? null, est_hours: t.est_hours ?? null }; // توافق خلفي مع التذاكر القديمة
+  let days = (t.dev_est_days ?? 0) + (t.test_est_days ?? 0);
+  let hours = (t.dev_est_hours ?? 0) + (t.test_est_hours ?? 0);
+  // كل 8 ساعات عمل = يوم — حتى لا يظهر «12 ساعة» بدل «يوم و4 ساعات»
+  if (hours >= 8) { days += Math.floor(hours / 8); hours = hours % 8; }
+  return { est_days: days || null, est_hours: hours || null };
+}
+
+export async function setEstimationOp(
+  ticketId: string,
+  est: {
+    // توافق خلفي: التقدير العام القديم (يُحفظ في الإجمالي مباشرة إن لم يوجد تقسيم)
+    days?: number | null; hours?: number | null;
+    dev?: { days?: number | null; hours?: number | null };
+    test?: { days?: number | null; hours?: number | null };
+  },
+): Promise<Ticket | null> {
   const repo = await getRepo();
   const t = await repo.ticketById(ticketId);
   if (!t) return null;
-  return repo.ticketUpdate(ticketId, {
-    est_days: est.days ?? t.est_days ?? null,
-    est_hours: est.hours ?? t.est_hours ?? null,
-    updated_at: nowIso(),
-  });
+  const patch: Partial<Ticket> = { updated_at: nowIso() };
+  if (est.dev) {
+    if (est.dev.days != null) patch.dev_est_days = est.dev.days;
+    if (est.dev.hours != null) patch.dev_est_hours = est.dev.hours;
+  }
+  if (est.test) {
+    if (est.test.days != null) patch.test_est_days = est.test.days;
+    if (est.test.hours != null) patch.test_est_hours = est.test.hours;
+  }
+  if (!est.dev && !est.test) {
+    // النمط القديم — تقدير عام واحد
+    patch.est_days = est.days ?? t.est_days ?? null;
+    patch.est_hours = est.hours ?? t.est_hours ?? null;
+  } else {
+    const totals = sumEstimation({ ...t, ...patch });
+    patch.est_days = totals.est_days;
+    patch.est_hours = totals.est_hours;
+  }
+  return repo.ticketUpdate(ticketId, patch);
 }
 
 // ═══ إسناد المطور (لا يتم إلا بعد التيست — القيد مفروض في الأكشن) ═══
@@ -278,8 +317,14 @@ export async function assignDeveloperOp(
     overall_status: "awaiting_developer",
     updated_at: nowIso(),
   };
-  if (est?.days != null) patch.est_days = est.days;
-  if (est?.hours != null) patch.est_hours = est.hours;
+  // التقدير المدخل مع إسناد المطور = تقدير الديف — والإجمالي يُجمع تلقائياً
+  if (est?.days != null) patch.dev_est_days = est.days;
+  if (est?.hours != null) patch.dev_est_hours = est.hours;
+  if (est?.days != null || est?.hours != null) {
+    const totals = sumEstimation({ ...old, ...patch });
+    patch.est_days = totals.est_days;
+    patch.est_hours = totals.est_hours;
+  }
   const ticket = await repo.ticketUpdate(ticketId, patch);
   if (!ticket) return null;
   await repo.assignmentCreate({ ticket_id: ticket.id, assignment_role: "developer", staff_id: developerId, assigned_by: assignedBy });

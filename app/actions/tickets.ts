@@ -298,15 +298,23 @@ export async function updateUrgentProgressAction(formData: FormData) {
     : `err=${enc(r.error ?? "تعذر تحديث الموقف")}`}`);
 }
 
-// ═══ تحديث تقدير التنفيذ (ساعات/أيام) — يظهر في الطلب والاستعلام ═══
+// ═══ تحديث تقدير التنفيذ — تقدير الديف وتقدير التيست منفصلان والإجمالي يُجمع تلقائياً ═══
 export async function setEstimationAction(formData: FormData) {
   await requireActionPermission("set_estimation");
   const code = String(formData.get("code") ?? "");
   const repo = await getRepo();
   const t = await repo.ticketByCode(code);
-  if (t) await setEstimationOp(t.id, estFromForm(formData));
+  const num = (k: string) => { const v = parseFloat(String(formData.get(k) ?? "")); return Number.isFinite(v) && v >= 0 ? v : null; };
+  const dev = { days: num("dev_est_days"), hours: num("dev_est_hours") };
+  const test = { days: num("test_est_days"), hours: num("test_est_hours") };
+  const hasSplit = dev.days != null || dev.hours != null || test.days != null || test.hours != null;
+  if (t) {
+    await setEstimationOp(t.id, hasSplit
+      ? { dev: (dev.days != null || dev.hours != null) ? dev : undefined, test: (test.days != null || test.hours != null) ? test : undefined }
+      : estFromForm(formData));
+  }
   revalidatePath(`/tickets/${code}`);
-  redirect(`/tickets/${code}?ok=${enc("تم تحديث تقدير التنفيذ ✓")}`);
+  redirect(`/tickets/${code}?ok=${enc("تم تحديث التقدير — الإجمالي جُمع تلقائياً من تقدير الديف والتيست ✓")}`);
 }
 
 // ═══ تغيير الحالة — بملاحظة إجبارية عند الرفض/فشل الاختبار ═══

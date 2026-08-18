@@ -63,8 +63,12 @@ export interface Ticket {
   developer_name: string | null; // denormalized للعرض السريع
   tester_id?: string | null;   // المختبِر المسند (يُحدد قبل المطور إجباراً)
   tester_name?: string | null;
-  est_days?: number | null;    // تقدير التنفيذ: أيام
-  est_hours?: number | null;   // تقدير التنفيذ: ساعات
+  est_days?: number | null;    // تقدير التنفيذ الإجمالي: أيام (= ديف + تيست)
+  est_hours?: number | null;   // تقدير التنفيذ الإجمالي: ساعات (= ديف + تيست)
+  dev_est_days?: number | null;   // تقدير المطور: أيام
+  dev_est_hours?: number | null;  // تقدير المطور: ساعات
+  test_est_days?: number | null;  // تقدير التيست: أيام
+  test_est_hours?: number | null; // تقدير التيست: ساعات
   is_urgent?: boolean;         // تذكرة «دعم فوري»
   dev_status: DevStatus;
   source: "internal" | "web_guest" | "update_form";

@@ -41,9 +41,12 @@ export function templateVars(
 ): Record<string, string> {
   const base = settings.base_url.replace(/\/$/, "");
   const priorityLabels: Record<string, string> = { low: "منخفضة", normal: "عادية", high: "مرتفعة", critical: "حرجة" };
-  const estimation = ticket.est_days || ticket.est_hours
-    ? `${ticket.est_days ? `${ticket.est_days} يوم` : ""}${ticket.est_days && ticket.est_hours ? " + " : ""}${ticket.est_hours ? `${ticket.est_hours} ساعة` : ""}`
-    : "غير محدد";
+  const fmtEst = (d?: number | null, h?: number | null) =>
+    d || h ? `${d ? `${d} يوم` : ""}${d && h ? " + " : ""}${h ? `${h} ساعة` : ""}` : "غير محدد";
+  // الإجمالي = تقدير الديف + تقدير التيست (يُجمع تلقائياً عند الحفظ)
+  const estimation = fmtEst(ticket.est_days, ticket.est_hours);
+  const devEstimation = fmtEst(ticket.dev_est_days, ticket.dev_est_hours);
+  const testEstimation = fmtEst(ticket.test_est_days, ticket.test_est_hours);
   const requestType = REQUEST_TYPE_LABELS[ticket.request_type ?? "issue"];
   const ticketKind = TICKET_KIND_LABELS[ticket.ticket_kind ?? (ticket.is_urgent ? "instant_support" : "standard")];
   const priority = priorityLabels[ticket.priority ?? (ticket.is_urgent ? "critical" : "normal")];
@@ -59,6 +62,8 @@ export function templateVars(
     "ticket.developer_name": ticket.developer_name ?? "غير محدد",
     "ticket.created_by_name": ticket.created_by_name,
     "ticket.estimation": estimation,
+    "ticket.dev_estimation": devEstimation,
+    "ticket.test_estimation": testEstimation,
     "ticket.affected_service": ticket.affected_service ?? "غير محدد",
     code: ticket.code,
     client_name: ticket.client_name,
@@ -70,6 +75,8 @@ export function templateVars(
     developer_name: ticket.developer_name ?? "غير محدد",
     created_by_name: ticket.created_by_name,
     estimation,
+    dev_estimation: devEstimation,
+    test_estimation: testEstimation,
     affected_service: ticket.affected_service ?? "غير محدد",
     status: ticket.dev_status,
     // الدعم الفوري «طلب جانبي»: حالته في الإيميلات من دورة حياته وليست حالة التطوير
@@ -108,7 +115,12 @@ export function renderBlocks(
     if (key === "creator" && blocks.creator) info += row("مدخل البيانات", esc(vars.created_by_name));
     if (key === "tester" && blocks.tester) info += row("التيستر المسند", esc(vars.tester_name));
     if (key === "developer" && blocks.developer) info += row("المطور المسند", esc(vars.developer_name));
-    if (key === "estimation" && blocks.estimation) info += row("التقدير الزمني", esc(vars.estimation));
+    if (key === "estimation" && blocks.estimation) {
+      const split = (vars.dev_estimation && vars.dev_estimation !== "غير محدد") || (vars.test_estimation && vars.test_estimation !== "غير محدد")
+        ? ` <span style="color:#94a3b8;font-size:12px">(ديف: ${esc(vars.dev_estimation)} · تيست: ${esc(vars.test_estimation)})</span>`
+        : "";
+      info += row("التقدير الزمني الإجمالي", `${esc(vars.estimation)}${split}`);
+    }
     if (key === "affected_service" && blocks.affected_service && vars.affected_service && vars.affected_service !== "غير محدد") info += row("الخدمة المتأثرة", esc(vars.affected_service));
   }
 

@@ -142,11 +142,17 @@ export default async function TicketDetailsPage({
               <div><dt className="text-slate-400">المختبِر (التيست)</dt><dd className="font-semibold text-purple-700">{ticket.tester_name ?? "لم يُحدد بعد"}<span className="block text-xs text-slate-400">{ASSIGNMENT_STATUS_LABELS[ticket.tester_assignment_status ?? "unassigned"]}</span></dd></div>
               <div><dt className="text-slate-400">المطور</dt><dd className="font-semibold">{ticket.developer_name ?? "غير معيّن"}<span className="block text-xs text-slate-400">{ASSIGNMENT_STATUS_LABELS[ticket.developer_assignment_status ?? "unassigned"]}</span></dd></div>
               <div>
-                <dt className="text-slate-400">⏱️ تقدير التنفيذ</dt>
+                <dt className="text-slate-400">⏱️ تقدير التنفيذ الإجمالي (ديف + تيست)</dt>
                 <dd className="font-semibold">
                   {(ticket.est_days || ticket.est_hours)
                     ? `${ticket.est_days ? `${ticket.est_days} يوم` : ""}${ticket.est_days && ticket.est_hours ? " + " : ""}${ticket.est_hours ? `${ticket.est_hours} ساعة` : ""}`
                     : "—"}
+                  {(ticket.dev_est_days || ticket.dev_est_hours || ticket.test_est_days || ticket.test_est_hours) && (
+                    <span className="block text-xs font-normal text-slate-400">
+                      ديف: {(ticket.dev_est_days || ticket.dev_est_hours) ? `${ticket.dev_est_days ? `${ticket.dev_est_days} يوم` : ""}${ticket.dev_est_days && ticket.dev_est_hours ? " + " : ""}${ticket.dev_est_hours ? `${ticket.dev_est_hours} ساعة` : ""}` : "—"}
+                      {" · "}تيست: {(ticket.test_est_days || ticket.test_est_hours) ? `${ticket.test_est_days ? `${ticket.test_est_days} يوم` : ""}${ticket.test_est_days && ticket.test_est_hours ? " + " : ""}${ticket.test_est_hours ? `${ticket.test_est_hours} ساعة` : ""}` : "—"}
+                    </span>
+                  )}
                 </dd>
               </div>
               <div><dt className="text-slate-400">المصدر</dt><dd>{ticket.source === "web_guest" ? "نموذج عام (ضيف)" : ticket.source === "update_form" ? "نموذج تحديث" : "داخلي"}</dd></div>
@@ -273,9 +279,11 @@ export default async function TicketDetailsPage({
                         {testers.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
                       </select>
                     </Field>
-                    <div className="flex flex-wrap gap-2">
-                      <input name="est_days" type="number" min="0" step="0.5" placeholder="التقدير: أيام" className={`${inputCls} w-32`} defaultValue={ticket.est_days ?? ""} />
-                      <input name="est_hours" type="number" min="0" step="1" placeholder="أو ساعات" className={`${inputCls} w-28`} defaultValue={ticket.est_hours ?? ""} />
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-xs font-semibold text-purple-700">تقدير التيست:</span>
+                      <input name="est_days" type="number" min="0" step="0.5" placeholder="أيام" className={`${inputCls} w-28`} defaultValue={ticket.test_est_days ?? ""} />
+                      <input name="est_hours" type="number" min="0" step="1" placeholder="أو ساعات" className={`${inputCls} w-28`} defaultValue={ticket.test_est_hours ?? ""} />
+                      <span className="text-xs text-slate-400">يُجمع مع تقدير الديف في الإجمالي تلقائياً</span>
                     </div>
                     <Button type="submit">إسناد التيست 🧪</Button>
                   </form>
@@ -291,9 +299,11 @@ export default async function TicketDetailsPage({
                           {devs.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
                         </select>
                       </Field>
-                      <div className="flex flex-wrap gap-2">
-                        <input name="est_days" type="number" min="0" step="0.5" placeholder="التقدير: أيام" className={`${inputCls} w-32`} defaultValue={ticket.est_days ?? ""} />
-                        <input name="est_hours" type="number" min="0" step="1" placeholder="أو ساعات" className={`${inputCls} w-28`} defaultValue={ticket.est_hours ?? ""} />
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-xs font-semibold text-blue-700">تقدير الديف:</span>
+                        <input name="est_days" type="number" min="0" step="0.5" placeholder="أيام" className={`${inputCls} w-28`} defaultValue={ticket.dev_est_days ?? ""} />
+                        <input name="est_hours" type="number" min="0" step="1" placeholder="أو ساعات" className={`${inputCls} w-28`} defaultValue={ticket.dev_est_hours ?? ""} />
+                        <span className="text-xs text-slate-400">يُجمع مع تقدير التيست في الإجمالي تلقائياً</span>
                       </div>
                       <Button type="submit">إسناد المطور 👨‍💻</Button>
                     </form>
@@ -305,12 +315,23 @@ export default async function TicketDetailsPage({
                 )}
 
                 {canEstimate && (
-                  <form action={setEstimationAction} className="flex flex-wrap items-end gap-2 rounded-xl border border-slate-200 bg-slate-50/60 p-3">
+                  <form action={setEstimationAction} className="space-y-3 rounded-xl border border-slate-200 bg-slate-50/60 p-3">
                     <input type="hidden" name="code" value={ticket.code} />
-                    <span className="text-sm font-semibold text-slate-700">⏱️ تعديل التقدير:</span>
-                    <input name="est_days" type="number" min="0" step="0.5" placeholder="أيام" className={`${inputCls} w-24`} defaultValue={ticket.est_days ?? ""} />
-                    <input name="est_hours" type="number" min="0" step="1" placeholder="ساعات" className={`${inputCls} w-24`} defaultValue={ticket.est_hours ?? ""} />
-                    <Button type="submit" variant="secondary">حفظ التقدير</Button>
+                    <span className="block text-sm font-bold text-slate-700">⏱️ التقدير — كل طرف يضع تقديره والإجمالي يُجمع تلقائياً</span>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="w-24 text-sm font-semibold text-blue-700">👨‍💻 الديف:</span>
+                      <input name="dev_est_days" type="number" min="0" step="0.5" placeholder="أيام" className={`${inputCls} w-24`} defaultValue={ticket.dev_est_days ?? ""} />
+                      <input name="dev_est_hours" type="number" min="0" step="1" placeholder="ساعات" className={`${inputCls} w-24`} defaultValue={ticket.dev_est_hours ?? ""} />
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="w-24 text-sm font-semibold text-purple-700">🧪 التيست:</span>
+                      <input name="test_est_days" type="number" min="0" step="0.5" placeholder="أيام" className={`${inputCls} w-24`} defaultValue={ticket.test_est_days ?? ""} />
+                      <input name="test_est_hours" type="number" min="0" step="1" placeholder="ساعات" className={`${inputCls} w-24`} defaultValue={ticket.test_est_hours ?? ""} />
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <Button type="submit" variant="secondary">حفظ التقدير</Button>
+                      <span className="text-xs text-slate-500">الإجمالي المعروض في الطلب والاستعلام والإيميلات = مجموع الاثنين (كل 8 ساعات = يوم)</span>
+                    </div>
                   </form>
                 )}
 
