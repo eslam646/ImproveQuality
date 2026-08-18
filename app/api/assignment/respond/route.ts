@@ -38,7 +38,10 @@ async function loadContext(token: string) {
   if (!staff || !staff.active) return { error: "حساب الموظف غير متاح." } as const;
   const assignedId = p.r === "tester" ? ticket.tester_id : ticket.developer_id;
   if (assignedId !== staff.id) return { error: "هذا التكليف لم يعد مسنداً إليك — ربما أُعيد إسناده لشخص آخر." } as const;
+  // بعد الإقفال أو إنهاء جزئك لا يوجد قرار — رابط الإيميل القديم يصبح للعرض فقط
+  if (ticket.urgent_ended_at) return { error: "هذا الدعم الفوري انتهى وأُقفل رسمياً — لا يوجد قرار مطلوب منك." } as const;
   const current = p.r === "tester" ? ticket.tester_assignment_status : ticket.developer_assignment_status;
+  if (current === "completed") return { error: "لقد أنهيت عملك على هذا الطلب بالفعل — لا يمكن قبول أو رفض التكليف بعد الإنهاء." } as const;
   return { p, ticket, staff, current } as const;
 }
 

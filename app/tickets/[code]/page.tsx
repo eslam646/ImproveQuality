@@ -98,9 +98,12 @@ export default async function TicketDetailsPage({
   const noteLabel = actor.role === "developer" ? "ملاحظات الديف" : actor.role === "tester" ? "ملاحظات التيست" : "ملاحظة مدخل البيانات";
   const canNote = perms.add_note && (perms.view_all_tickets || ticket.created_by === actor.id || isAssignedTester || isAssignedDev);
   // الدعم الفوري «طلب جانبي»: المكلَّف الذي قَبِل يحدّث موقفه (مازلت أعمل / انتهيت) — والأدمن يقدر أيضاً (يُسجل باسمه)
+  // من أنهى جزءه (completed) لا يظهر له النموذج مرة أخرى — لا رجوع بعد الإنهاء
   const urgentEnded = !!ticket.urgent_ended_at;
   const canUpdateUrgentProgress = !!ticket.is_urgent && !urgentEnded && perms.update_urgent_progress
     && (actor.role === "admin" || ((isAssignedTester || isAssignedDev) && myAssignmentStatus === "accepted"));
+  const myPartDone = (isAssignedTester && ticket.tester_assignment_status === "completed")
+    || (isAssignedDev && ticket.developer_assignment_status === "completed");
   const hasActions = canAssignTester || canAssignDev || canEstimate || canNote || isAssignedTester || isAssignedDev || transitions.length > 0 || canUpdateUrgentProgress;
 
   return (
@@ -335,11 +338,17 @@ export default async function TicketDetailsPage({
                   </form>
                 )}
 
-                {canUpdateUrgentProgress && (
+                {canUpdateUrgentProgress && !myPartDone && (
                   <UrgentProgressForm code={ticket.code} roleLabel={isAssignedTester ? "التيست" : isAssignedDev ? "المطوّر" : "مدير النظام (إجراء إداري يُسجل باسمك)"} />
                 )}
 
-                {!!ticket.is_urgent && !urgentEnded && perms.assignment_decision && (isAssignedTester || isAssignedDev) && myAssignmentStatus === "accepted" && (
+                {!!ticket.is_urgent && !urgentEnded && myPartDone && (
+                  <div className="rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm text-indigo-800">
+                    ✅ أنهيت جزءك في هذا الدعم الفوري — الإقفال الرسمي بانتظار إنهاء {isAssignedTester ? "الديف" : "التيست"}. لا يمكنك الرفض أو الاعتذار بعد الإنهاء.
+                  </div>
+                )}
+
+                {!!ticket.is_urgent && !urgentEnded && !myPartDone && perms.assignment_decision && (isAssignedTester || isAssignedDev) && myAssignmentStatus === "accepted" && (
                   <form action={declineAssignmentAction} className="space-y-2 rounded-xl border border-rose-200 bg-rose-50 p-3">
                     <input type="hidden" name="code" value={ticket.code} />
                     <Field label={`الاعتذار عن الدعم الفوري (أنت ${isAssignedTester ? "التيست" : "المطوّر"} المسند)`} hint="خاص بالدعم الفوري فقط — السبب إجباري، ويصل إيميل لمقدم الطلب والإدارة ثم تعود المهمة لإعادة الإسناد">

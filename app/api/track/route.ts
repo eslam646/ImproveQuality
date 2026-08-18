@@ -69,7 +69,9 @@ export async function GET(req: Request) {
         else if (a.action === "tester.urgent_withdrawal") steps.push({ status_label: `🙅 اعتذر التيستر ${who} عن الاستمرار — بانتظار إعادة الإسناد`, at: a.created_at });
         else if (a.action === "developer.urgent_withdrawal") steps.push({ status_label: `🙅 اعتذر المطور ${who} عن الاستمرار — بانتظار إعادة الإسناد`, at: a.created_at });
         else if (a.action === "urgent.still_working") steps.push({ status_label: `🔄 ${who} مازال يعمل على النقطة`, at: a.created_at });
-        else if (a.action === "urgent.completed") steps.push({ status_label: `✅ ${who} أنهى الدعم الفوري — انتهت هذه النقطة`, at: a.created_at });
+        else if (a.action === "urgent.tester_done") steps.push({ status_label: `⏳ أنهى التيست ${who} جزءه — الإقفال بانتظار الديف`, at: a.created_at });
+        else if (a.action === "urgent.developer_done") steps.push({ status_label: `⏳ أنهى الديف ${who} جزءه — الإقفال بانتظار التيست`, at: a.created_at });
+        else if (a.action === "urgent.completed") steps.push({ status_label: `✅ ${who} أنهى الدعم الفوري — أُقفل الطلب رسمياً`, at: a.created_at });
       }
       body.timeline = steps;
     } else {

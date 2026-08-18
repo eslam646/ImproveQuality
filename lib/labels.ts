@@ -81,15 +81,22 @@ export const NOTE_REQUIRED_STATUSES: DevStatus[] = ["rejected", "test_failed"];
 // ═══ الدعم الفوري «طلب جانبي» — حالته مشتقة من دورة حياته وليست حالة التطوير ═══
 // المسار: بانتظار قبول التكليف ← (اعتذر؟ إعادة إسناد) ← جاري العمل ← تم الانتهاء
 export function urgentStatusInfo(
-  t: Pick<Ticket, "urgent_ended_at" | "urgent_started_at" | "tester_assignment_status" | "developer_assignment_status">,
+  t: Pick<Ticket, "urgent_ended_at" | "urgent_started_at" | "tester_assignment_status" | "developer_assignment_status" | "tester_id" | "developer_id">,
 ): { label: string; color: string } {
-  if (t.urgent_ended_at) return { label: "✅ تم الانتهاء", color: "bg-emerald-100 text-emerald-800" };
+  if (t.urgent_ended_at) return { label: "✅ تم الانتهاء — أُقفل رسمياً", color: "bg-emerald-100 text-emerald-800" };
   if (t.tester_assignment_status === "declined" && t.developer_assignment_status === "declined")
     return { label: "🙅 اعتذر التيست والديف — بانتظار إعادة الإسناد", color: "bg-rose-100 text-rose-800" };
   if (t.tester_assignment_status === "declined")
     return { label: "🙅 اعتذر التيست — بانتظار إعادة الإسناد", color: "bg-rose-100 text-rose-800" };
   if (t.developer_assignment_status === "declined")
     return { label: "🙅 اعتذر الديف — بانتظار إعادة الإسناد", color: "bg-rose-100 text-rose-800" };
+  // إنهاء جزئي: طرف أنهى والآخر لم يُنهِ بعد — الإقفال الرسمي يتطلب الاثنين
+  if (t.tester_id && t.developer_id) {
+    if (t.tester_assignment_status === "completed" && t.developer_assignment_status !== "completed")
+      return { label: "⏳ أنهى التيست — الإقفال بانتظار الديف", color: "bg-indigo-100 text-indigo-800" };
+    if (t.developer_assignment_status === "completed" && t.tester_assignment_status !== "completed")
+      return { label: "⏳ أنهى الديف — الإقفال بانتظار التيست", color: "bg-indigo-100 text-indigo-800" };
+  }
   if (t.urgent_started_at || t.tester_assignment_status === "accepted" || t.developer_assignment_status === "accepted")
     return { label: "🔄 جاري العمل", color: "bg-blue-100 text-blue-800" };
   return { label: "⏳ بانتظار قبول التكليف", color: "bg-amber-100 text-amber-800" };

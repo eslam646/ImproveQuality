@@ -356,6 +356,10 @@ export async function respondToAssignmentOp(
   if (!assignmentRole) return { ok: false, error: "هذا الإجراء متاح للتيستر والمطور فقط" };
   const assignedId = assignmentRole === "tester" ? ticket.tester_id : ticket.developer_id;
   if (assignedId !== actor.staff_id) return { ok: false, error: "هذا التكليف غير مسند إليك" };
+  // بعد الإقفال الرسمي أو إنهاء جزئك لا يوجد قرار تكليف — يمنع «رفض» متأخر من رابط الإيميل القديم
+  if (ticket.urgent_ended_at) return { ok: false, error: "هذا الدعم الفوري انتهى وأُقفل — لا يمكن قبول أو رفض التكليف بعد الإقفال" };
+  const myStatus = assignmentRole === "tester" ? ticket.tester_assignment_status : ticket.developer_assignment_status;
+  if (myStatus === "completed") return { ok: false, error: "لقد أنهيت عملك على هذا الطلب بالفعل — لا يمكن رفض التكليف بعد الإنهاء" };
   if (decision === "declined" && (!reason || reason.trim().length < 3)) {
     return { ok: false, error: "سبب رفض التكليف إجباري" };
   }
@@ -429,11 +433,14 @@ export async function declineAssignmentOp(
   const t = await repo.ticketById(ticketId);
   if (!t) return { ok: false, error: "الطلب غير موجود" };
   if (!t.is_urgent) return { ok: false, error: "الاعتذار متاح لطلبات الدعم الفوري فقط" };
+  if (t.urgent_ended_at) return { ok: false, error: "هذا الدعم الفوري انتهى وأُقفل — لا اعتذار بعد الإقفال" };
   const actorLabel = `${actor.name} (${ROLE_LABELS[actor.role]})`;
 
   const isTester = actor.role === "tester" && t.tester_id === actor.staff_id;
   const isDev = actor.role === "developer" && t.developer_id === actor.staff_id;
   if (!isTester && !isDev) return { ok: false, error: "المهمة غير مسندة إليك حالياً" };
+  const myStatus = isTester ? t.tester_assignment_status : t.developer_assignment_status;
+  if (myStatus === "completed") return { ok: false, error: "لقد أنهيت عملك على هذا الطلب — لا اعتذار بعد الإنهاء" };
   const currentAssignment = await repo.assignmentCurrent(ticketId, isTester ? "tester" : "developer");
   if (currentAssignment) await repo.assignmentRespond(currentAssignment.id, "declined", reason);
 
@@ -517,24 +524,35 @@ export async function updateUrgentProgressOp(
   const startedAt = t.urgent_started_at ?? t.created_at;
   const minutes = Math.max(1, Math.round((Date.parse(now) - Date.parse(startedAt)) / 60000));
 
+  // ═══ قاعدة الإغلاق الرسمي ═══
+  // الطلب لا يُقفل إلا لما «كل المكلَّفين الحاليين» ينهوا:
+  //  - تيست + ديف موجودان → لازم الاثنان يعلنان الانتهاء
+  //  - تيست فقط (لا ديف) → إنهاء التيست يقفل الطلب
+  //  - ديف فقط (لا تيست) → إنهاء الديف يقفل الطلب
+  //  - الأدمن → إغلاق إداري فوري للطرفين معاً
+  const adminClose = isAdmin && !isTester && !isDev;
   let updated: Ticket;
+  let fullyClosed = false;
   if (done) {
-    const u = await repo.ticketUpdate(ticketId, {
-      urgent_started_at: t.urgent_started_at ?? startedAt,
-      urgent_ended_at: now,
-      urgent_result: note!.trim(),
-      actual_minutes: minutes,
-      tester_assignment_status: t.tester_id ? "completed" : t.tester_assignment_status,
-      developer_assignment_status: t.developer_id ? "completed" : t.developer_assignment_status,
-      overall_status: "closed",
-      dev_status: "closed",
-      last_status_change: now,
-      updated_at: now,
-    });
-    if (!u) return { ok: false, error: "تعذر إنهاء الدعم الفوري" };
+    const patch: Partial<Ticket> = { urgent_started_at: t.urgent_started_at ?? startedAt, updated_at: now };
+    if ((isTester || adminClose) && t.tester_id) patch.tester_assignment_status = "completed";
+    if ((isDev || adminClose) && t.developer_id) patch.developer_assignment_status = "completed";
+    const testerDone = !t.tester_id || (patch.tester_assignment_status ?? t.tester_assignment_status) === "completed";
+    const devDone = !t.developer_id || (patch.developer_assignment_status ?? t.developer_assignment_status) === "completed";
+    fullyClosed = testerDone && devDone;
+    if (fullyClosed) {
+      patch.urgent_ended_at = now;
+      patch.urgent_result = note!.trim();
+      patch.actual_minutes = minutes;
+      patch.overall_status = "closed";
+      patch.dev_status = "closed";
+      patch.last_status_change = now;
+    }
+    const u = await repo.ticketUpdate(ticketId, patch);
+    if (!u) return { ok: false, error: "تعذر تسجيل الإنهاء" };
     updated = u;
-    if (t.tester_id) await repo.assignmentComplete(ticketId, "tester");
-    if (t.developer_id) await repo.assignmentComplete(ticketId, "developer");
+    if ((isTester || adminClose) && t.tester_id) await repo.assignmentComplete(ticketId, "tester");
+    if ((isDev || adminClose) && t.developer_id) await repo.assignmentComplete(ticketId, "developer");
   } else {
     // «مازلت في الطلب»: يثبت بداية العمل إن لم تكن مسجلة ويحدّث آخر نشاط
     const u = await repo.ticketUpdate(ticketId, {
@@ -547,17 +565,24 @@ export async function updateUrgentProgressOp(
     updated = u;
   }
 
-  const progressText = done ? "✅ انتهيت — انتهى الدعم الفوري لهذه النقطة" : "🔄 مازلت أعمل على هذه النقطة";
+  const waitingFor = done && !fullyClosed
+    ? (updated.tester_assignment_status !== "completed" && updated.tester_id ? "التيست" : "الديف")
+    : null;
+  const progressText = done
+    ? fullyClosed
+      ? "✅ انتهيت — انتهى الدعم الفوري لهذه النقطة وأُقفل الطلب رسمياً"
+      : `✅ أنهى ${isTester ? "التيست" : "الديف"} جزءه — الطلب لا يُقفل رسمياً إلا بعد إنهاء ${waitingFor}`
+    : "🔄 مازلت أعمل على هذه النقطة";
   await repo.eventAdd({
     ticket_id: ticketId, type: "note.added", actor_label: actorLabel,
     old_values: null,
     new_values: { note: `${progressText}${note?.trim() ? ` — ${note.trim()}` : ""}${done ? ` (المدة الفعلية: ${minutes} دقيقة تقريباً)` : ""}` },
   });
   await repo.auditAdd({
-    entity_type: "ticket", entity_id: ticketId, action: done ? "urgent.completed" : "urgent.still_working",
+    entity_type: "ticket", entity_id: ticketId, action: done ? (fullyClosed ? "urgent.completed" : `urgent.${isTester ? "tester" : "developer"}_done`) : "urgent.still_working",
     actor_staff_id: actor.staff_id, actor_label: actorLabel,
     old_values: { dev_status: t.dev_status, urgent_started_at: t.urgent_started_at, urgent_ended_at: t.urgent_ended_at },
-    new_values: { progress, note: note?.trim() || null, ...(done ? { actual_minutes: minutes } : {}) },
+    new_values: { progress, fully_closed: fullyClosed, note: note?.trim() || null, ...(done && fullyClosed ? { actual_minutes: minutes } : {}) },
   });
 
   // بريد الموقف: قالب مركزي قابل للتعديل من صفحة القوالب
@@ -568,21 +593,25 @@ export async function updateUrgentProgressOp(
     ...templateVars(updated, settings),
     actor_name: actor.name,
     actor_role: ROLE_LABELS[actor.role],
-    progress_label: done ? "انتهى الدعم الفوري ✅" : "مازال العمل جارياً 🔄",
+    progress_label: done
+      ? (fullyClosed ? "انتهى الدعم الفوري وأُقفل الطلب ✅" : `أنهى ${isTester ? "التيست" : "الديف"} جزءه — بانتظار ${waitingFor} للإقفال الرسمي ⏳`)
+      : "مازال العمل جارياً 🔄",
     note: note?.trim() ?? "",
-    duration_minutes: done ? String(minutes) : "",
+    duration_minutes: done && fullyClosed ? String(minutes) : "",
   };
   const fallbackSubject = done
-    ? `✅ انتهى الدعم الفوري ${t.code} — ${actor.name}`
+    ? fullyClosed
+      ? `✅ انتهى الدعم الفوري ${t.code} وأُقفل الطلب — ${actor.name}`
+      : `⏳ ${actor.name} أنهى جزءه في ${t.code} — بانتظار ${waitingFor} للإقفال`
     : `🔄 ${actor.name} مازال يعمل على الدعم الفوري ${t.code}`;
   const subject = tmpl ? renderTemplate(tmpl.subject, vars, { htmlEscape: false }) : fallbackSubject;
   const bodyHtml = tmpl
     ? renderBlocks(vars, { ...DEFAULT_TEMPLATE_BLOCKS, ...(tmpl.blocks ?? {}) }, renderTemplate(tmpl.body_html, vars))
     : `<p><b>${esc(actorLabel)}</b> حدّث موقف الدعم الفوري <b dir="ltr">${esc(t.code)}</b> (${esc(t.client_name)}):</p>
-       <p style="background:${done ? "#f0fdf4;border:1px solid #bbf7d0" : "#eff6ff;border:1px solid #bfdbfe"};border-radius:8px;padding:12px">
-         <b>${done ? "✅ انتهى الدعم الفوري لهذه النقطة" : "🔄 مازال العمل جارياً على هذه النقطة"}</b>
+       <p style="background:${done && fullyClosed ? "#f0fdf4;border:1px solid #bbf7d0" : "#eff6ff;border:1px solid #bfdbfe"};border-radius:8px;padding:12px">
+         <b>${done ? (fullyClosed ? "✅ انتهى الدعم الفوري وأُقفل الطلب رسمياً" : `⏳ أنهى ${isTester ? "التيست" : "الديف"} جزءه — الإقفال الرسمي بانتظار ${waitingFor}`) : "🔄 مازال العمل جارياً على هذه النقطة"}</b>
          ${note?.trim() ? `<br>${esc(note.trim()).replaceAll("\n", "<br>")}` : ""}
-         ${done ? `<br><span style="color:#64748b">المدة الفعلية: ${minutes} دقيقة تقريباً</span>` : ""}
+         ${done && fullyClosed ? `<br><span style="color:#64748b">المدة الفعلية: ${minutes} دقيقة تقريباً</span>` : ""}
        </p>`;
   await mailParties({
     ticket: updated,
@@ -594,7 +623,7 @@ export async function updateUrgentProgressOp(
     bodyHtml,
     notifyTo: ["creator"],
     notifyMessage: done
-      ? `✅ ${actor.name} أنهى الدعم الفوري ${t.code}`
+      ? fullyClosed ? `✅ ${actor.name} أنهى الدعم الفوري ${t.code} وأُقفل` : `⏳ ${actor.name} أنهى جزءه في ${t.code}`
       : `🔄 ${actor.name} مازال يعمل على ${t.code}`,
   });
   return { ok: true };
