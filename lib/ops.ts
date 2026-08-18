@@ -153,6 +153,17 @@ export async function createTicketOp(input: {
     tester_name = ts?.name ?? null;
   }
   const urgent = input.ticket_kind === "instant_support" || !!input.is_urgent;
+
+  // حماية من التكرار: نفس المدخل + نفس العنوان/التفاصيل خلال دقيقتين = ضغطة زر مكررة، نعيد الطلب الموجود بدل إنشاء نسخة
+  const recent = await repo.ticketList({ created_by: creatorId ?? undefined, page: 1, pageSize: 5 });
+  const dupCutoff = Date.now() - 2 * 60000;
+  const dup = recent.rows.find((r) =>
+    Date.parse(r.created_at) >= dupCutoff &&
+    r.client_name === clientName &&
+    (r.title ?? "") === (input.title?.trim() || "") &&
+    r.details === input.details,
+  );
+  if (dup) return dup;
   const ticket = await repo.ticketCreate({
     client_name: clientName, client_contact: contact || null,
     title: input.title?.trim() || null,

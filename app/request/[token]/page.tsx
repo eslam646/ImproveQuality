@@ -4,6 +4,7 @@ import { Card, Field, inputCls, Msg, selectCls } from "@/components/ui";
 import { getRepo } from "@/lib/db";
 import { REQUEST_TYPE_LABELS } from "@/lib/labels";
 import { hashPrivateToken } from "@/lib/private-links";
+import { SubmitButton } from "@/components/submit-button";
 
 export const dynamic = "force-dynamic";
 
@@ -81,7 +82,7 @@ export default async function PrivateRequestPage({
           <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
             رفع المرفق الإجباري والفيديو عبر R2 سيكون في الدفعة التالية؛ لن يُنشر هذا النموذج على الإنتاج قبل اكتماله.
           </div>
-          <button className="w-full rounded-lg bg-blue-600 py-2.5 font-bold text-white hover:bg-blue-700">إرسال الطلب</button>
+          <SubmitButton className="w-full py-2.5 text-base" pendingText="⏳ جارٍ إرسال الطلب… لا تضغط مرة أخرى">إرسال الطلب</SubmitButton>
         </form>
       </Card>
     </div>

@@ -1,7 +1,8 @@
 import { createInstantSupportAction } from "@/app/actions/tickets";
 import { requireActionPermission } from "@/lib/auth";
 import { getRepo } from "@/lib/db";
-import { Button, Card, Field, inputCls, Msg, selectCls } from "@/components/ui";
+import { Card, Field, inputCls, Msg, selectCls } from "@/components/ui";
+import { SubmitButton } from "@/components/submit-button";
 
 export const dynamic = "force-dynamic";
 
@@ -51,7 +52,7 @@ export default async function InstantSupportPage({
             سيُسجل اسم مدخل البيانات المختار ويصل البريد إليه وإلى المسؤولين وفق قواعد الأتمتة. العميل نفسه لا يحتاج بريدًا.
           </div>
 
-          <Button type="submit">🚨 إنشاء وإرسال التكليف فورًا</Button>
+          <SubmitButton pendingText="⏳ جارٍ إنشاء الطلب وإرسال الإيميلات… لا تضغط مرة أخرى">🚨 إنشاء وإرسال التكليف فورًا</SubmitButton>
         </form>
       </Card>
     </div>

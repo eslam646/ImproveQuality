@@ -1,7 +1,8 @@
 import { getRepo } from "@/lib/db";
 import { requireActionPermission } from "@/lib/auth";
 import { createTicketAction } from "@/app/actions/tickets";
-import { Button, Card, Field, inputCls, Msg, selectCls } from "@/components/ui";
+import { Card, Field, inputCls, Msg, selectCls } from "@/components/ui";
+import { SubmitButton } from "@/components/submit-button";
 import { CustomFieldInput } from "@/components/public-forms";
 import { REQUEST_TYPE_LABELS } from "@/lib/labels";
 
@@ -102,7 +103,7 @@ export default async function NewTicketPage({
             </div>
           )}
           <div style={{ order: 999 }} className="flex gap-2">
-            <Button type="submit">إنشاء الطلب ✓</Button>
+            <SubmitButton pendingText="⏳ جارٍ إنشاء الطلب وإرسال الإشعارات… لا تضغط مرة أخرى">إنشاء الطلب ✓</SubmitButton>
           </div>
         </form>
       </Card>
