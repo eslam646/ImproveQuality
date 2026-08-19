@@ -9,6 +9,7 @@ import { CustomFieldsBuilder } from "@/components/custom-fields-builder";
 import { TrackCfgEditor } from "@/components/track-cfg-editor";
 import { UrgentFormDesigner } from "@/components/urgent-form-designer";
 import { UserPermissionsEditor } from "@/components/user-permissions-editor";
+import { EstimationRemindersEditor } from "@/components/estimation-reminders-editor";
 import { teamsConfigStatus } from "@/lib/teams";
 
 export const dynamic = "force-dynamic";
@@ -63,6 +64,9 @@ export default async function SettingsPage({
       </Card>
       <Card title="🔍 صفحة الاستعلام العامة — ماذا يرى صاحب الكود">
         <TrackCfgEditor initial={s.track_cfg} />
+      </Card>
+      <Card title="⏰ تذكيرات التقدير الزمني — للديف والتيست">
+        <EstimationRemindersEditor initial={s.estimation_reminders} />
       </Card>
       <Card title="🎥 تكامل Microsoft Teams">
         <div className="space-y-2 text-sm">

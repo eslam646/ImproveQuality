@@ -317,6 +317,11 @@ export async function assignDeveloperOp(
     overall_status: "awaiting_developer",
     updated_at: nowIso(),
   };
+  // الطلب العادي: إسناد الديف = «تم التسليم للديف» — الديف نفسه يبدأ «قيد التطوير» عندما يشتغل فعلاً
+  if (!old.is_urgent && ["new", "needs_info"].includes(old.dev_status)) {
+    patch.dev_status = "handed_to_dev";
+    patch.last_status_change = nowIso();
+  }
   // التقدير المدخل مع إسناد المطور = تقدير الديف — والإجمالي يُجمع تلقائياً
   if (est?.days != null) patch.dev_est_days = est.days;
   if (est?.hours != null) patch.dev_est_hours = est.hours;
@@ -382,8 +387,12 @@ export async function respondToAssignmentOp(
       }
     : {
         developer_assignment_status: decision,
+        // قبول الديف ≠ بدء الشغل: الحالة لا تتحول لـ«قيد التطوير» إلا عندما يبدأ هو فعلياً
+        // (الدعم الفوري فقط يبدأ فور القبول لأنه عاجل بطبيعته)
         ...(accepted
-          ? { overall_status: "in_development" as const, dev_status: "in_progress" as const, last_status_change: nowIso() }
+          ? (ticket.is_urgent
+              ? { overall_status: "in_development" as const, dev_status: "in_progress" as const, last_status_change: nowIso() }
+              : { overall_status: "in_development" as const })
           : { developer_id: null, developer_name: null, overall_status: "awaiting_developer" as const }),
         updated_at: nowIso(),
       };
@@ -639,9 +648,23 @@ export async function changeStatusOp(
   const repo = await getRepo();
   const old = await repo.ticketById(ticketId);
   if (!old || old.dev_status === newStatus) return old;
-  const ticket = await repo.ticketUpdate(ticketId, {
+  const statusPatch: Partial<Ticket> = {
     dev_status: newStatus, last_status_change: nowIso(), updated_at: nowIso(),
-  });
+  };
+  // عدّادات التقدير: «قيد التطوير» تبدأ عدّاد الديف — «جاري الاختبار» تبدأ عدّاد التيست
+  // إعادة الدخول للحالة (مثلاً بعد فشل الاختبار) تعيد ضبط العدّاد والتذكيرات الخاصة به
+  const reminders = { ...(old.reminders_sent ?? {}) };
+  if (newStatus === "in_progress") {
+    statusPatch.dev_started_at = nowIso();
+    for (const k of Object.keys(reminders)) if (k.startsWith("dev.")) delete reminders[k];
+    statusPatch.reminders_sent = reminders;
+  }
+  if (newStatus === "testing") {
+    statusPatch.test_started_at = nowIso();
+    for (const k of Object.keys(reminders)) if (k.startsWith("test.")) delete reminders[k];
+    statusPatch.reminders_sent = reminders;
+  }
+  const ticket = await repo.ticketUpdate(ticketId, statusPatch);
   if (!ticket) return null;
   await repo.auditAdd({
     entity_type: "ticket", entity_id: ticket.id, action: "status.changed", actor_label: actorLabel,

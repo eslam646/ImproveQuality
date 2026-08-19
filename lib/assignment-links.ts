@@ -49,17 +49,27 @@ export function assignmentEmailActions(
   const base = baseUrl.replace(/\/$/, "");
   const mk = (d: "accepted" | "declined") =>
     `${base}/api/assignment/respond?token=${encodeURIComponent(signAssignmentToken({ t: ticket.id, s: assignee.id, r: role, d, exp: Date.now() + WEEK_MS }))}`;
-  const btn = (href: string, label: string, bg: string) =>
-    `<a href="${href}" target="_blank" rel="noopener noreferrer" style="display:inline-block;background:${bg};color:#ffffff;text-decoration:none;border-radius:10px;padding:11px 20px;font-size:14px;font-weight:700;margin:4px 6px 0 0">${label}</a>`;
+  // أزرار بجداول (VML-safe) — تظهر أنيقة ومتناسقة في Outlook وGmail معاً
+  const btn = (href: string, label: string, bg: string) => `
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center" style="display:inline-table;margin:6px 4px 0">
+      <tr><td bgcolor="${bg}" style="border-radius:10px;mso-padding-alt:12px 22px">
+        <a href="${href}" target="_blank" rel="noopener noreferrer"
+           style="display:inline-block;padding:12px 22px;font-family:'Segoe UI',Tahoma,Arial,sans-serif;font-size:14px;font-weight:700;color:#ffffff;text-decoration:none;border-radius:10px;white-space:nowrap">${label}</a>
+      </td></tr>
+    </table>`;
   const roleLabel = role === "tester" ? "التيست" : "المطوّر";
   return `
-    <div style="margin-top:20px;background:#fffbeb;border:1px solid #fde68a;border-radius:12px;padding:14px 16px">
-      <div style="font-size:14px;font-weight:800;color:#92400e;margin-bottom:8px">قرارك مطلوب — يمكنك الرد مباشرة من هنا:</div>
-      <div>
-        ${btn(mk("accepted"), "✅ أوافق على التكليف", "#059669")}
-        ${btn(mk("declined"), "❌ الاعتذار (مع كتابة السبب)", "#dc2626")}
-        ${btn(`${base}/tickets/${encodeURIComponent(ticket.code)}`, "🔍 فتح الطلب", "#1d4ed8")}
-      </div>
-      <div style="font-size:12px;color:#a16207;margin-top:8px">هذه الأزرار خاصة بـ<b>${assignee.name}</b> (${roleLabel}) فقط — الضغط عليها يسجل القرار باسمه في سجل التدقيق.</div>
-    </div>`;
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin-top:22px">
+      <tr><td style="background:#fffbeb;border:1px solid #fde68a;border-radius:12px;padding:18px 16px;text-align:center">
+        <div style="font-family:'Segoe UI',Tahoma,Arial,sans-serif;font-size:15px;font-weight:800;color:#92400e;margin-bottom:10px">⚡ قرارك مطلوب — يمكنك الرد مباشرة من هنا</div>
+        <div style="text-align:center">
+          ${btn(mk("accepted"), "✅ أوافق على التكليف", "#059669")}
+          ${btn(mk("declined"), "🙅 الاعتذار — مع كتابة السبب", "#dc2626")}
+          ${btn(`${base}/tickets/${encodeURIComponent(ticket.code)}`, "📂 فتح الطلب في النظام", "#1d4ed8")}
+        </div>
+        <div style="font-family:'Segoe UI',Tahoma,Arial,sans-serif;font-size:12px;color:#a16207;margin-top:12px;line-height:1.8">
+          هذه الأزرار خاصة بـ<b>${assignee.name}</b> (${roleLabel}) فقط — الضغط عليها يفتح صفحة تأكيد ويسجل القرار باسمه في سجل التدقيق.
+        </div>
+      </td></tr>
+    </table>`;
 }

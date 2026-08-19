@@ -1,6 +1,7 @@
 // عامل المهام: يمسك المهام من الطابور وينفذها (إيميلات/إشعارات/تحديث حقول)
 import { getRepo } from "./db";
 import { enqueueStaleReminders, recipientEmails, resolveRecipients } from "./engine";
+import { processEstimationReminders } from "./estimation-reminders";
 import { sendMail } from "./email";
 import { renderBlocks, renderTemplate, templateVars, wrapEmail } from "./templates";
 import { assignmentEmailActions } from "./assignment-links";
@@ -21,6 +22,8 @@ export async function processAll(): Promise<ProcessReport> {
   const repo = await getRepo();
   const settings = await repo.settingsGet();
   const remindersEnqueued = await enqueueStaleReminders();
+  // تذكيرات التقدير الزمني (منتصف/قبل النهاية/تأخير) — Idempotent ولا تفشل الدورة كلها
+  try { await processEstimationReminders(); } catch (e) { console.error("estimation reminders:", e); }
 
   const jobs = await repo.jobsDue(25);
   const report: ProcessReport = { remindersEnqueued, processed: 0, sent: 0, retried: 0, dead: 0, skipped: 0 };

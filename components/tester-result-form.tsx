@@ -3,9 +3,21 @@
 import { useState } from "react";
 import { testerResultAction } from "@/app/actions/tickets";
 
-// نتيجة الاختبار: الاعتماد مباشر — أما الفشل فيفتح بوكس «سبب المشكلة» الإجباري
-export function TesterResultForm({ code }: { code: string }) {
+// نتيجة الاختبار: «ابدأ الاختبار» يبدأ عدّاد تقدير التيست — ثم الاعتماد أو الفشل بسبب إجباري
+export function TesterResultForm({ code, status = "ready_for_test" }: { code: string; status?: string }) {
   const [failMode, setFailMode] = useState(false);
+
+  // جاهز للاختبار → أول خطوة إجبارية: بدء الاختبار (يبدأ العدّاد)
+  if (status === "ready_for_test") {
+    return (
+      <form action={testerResultAction} className="mt-3">
+        <input type="hidden" name="code" value={code} />
+        <button name="result" value="testing" className="w-full rounded-lg bg-fuchsia-600 px-4 py-2 text-sm font-bold text-white hover:bg-fuchsia-700">
+          🧪 ابدأ الاختبار — يبدأ عدّاد تقدير التيست
+        </button>
+      </form>
+    );
+  }
 
   if (failMode) {
     return (

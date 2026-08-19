@@ -16,7 +16,11 @@ export default async function TestingPage({
   await requirePerm("testing");
   const sp = await searchParams;
   const repo = await getRepo();
-  const { rows } = await repo.ticketList({ status: "ready_for_test", pageSize: 50 });
+  const [{ rows: ready }, { rows: testing }] = await Promise.all([
+    repo.ticketList({ status: "ready_for_test", pageSize: 50 }),
+    repo.ticketList({ status: "testing", pageSize: 50 }),
+  ]);
+  const rows = [...testing, ...ready];
 
   return (
     <div className="space-y-5">
@@ -43,7 +47,7 @@ export default async function TestingPage({
               <p className="mt-2 font-semibold">{t.client_name}</p>
               <p className="mt-1 text-sm leading-relaxed text-slate-600">{t.details}</p>
               <p className="mt-1 text-xs text-slate-400">المطور: {t.developer_name ?? "—"}</p>
-              <TesterResultForm code={t.code} />
+              <TesterResultForm code={t.code} status={t.dev_status} />
             </Card>
           ))}
         </div>

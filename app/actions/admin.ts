@@ -6,7 +6,7 @@ import { getRepo } from "@/lib/db";
 import { renderBlocks, renderTemplate, templateVars, wrapEmail } from "@/lib/templates";
 import { sendMail } from "@/lib/email";
 import { settingsSchema, staffSchema, templateSchema } from "@/lib/validators";
-import type { CustomFieldCfg, CustomFieldType, FormFieldCfg, Role, RolePermissions, TemplateBlocks, TrackPageCfg, UrgentFormFieldCfg, UserPermissionOverrides } from "@/lib/types";
+import type { CustomFieldCfg, CustomFieldType, EstimationReminderCfg, FormFieldCfg, Role, RolePermissions, TemplateBlocks, TrackPageCfg, UrgentFormFieldCfg, UserPermissionOverrides } from "@/lib/types";
 import { DEFAULT_TEMPLATE_BLOCKS } from "@/lib/types";
 import { isEmail } from "@/lib/util";
 import { generatePrivateToken, hashPrivateToken } from "@/lib/private-links";
@@ -276,6 +276,25 @@ export async function saveTrackCfgAction(cfg: TrackPageCfg) {
   await repo.settingsSet({ track_cfg: cfg });
   revalidatePath("/settings");
   revalidatePath("/track");
+  return { ok: true };
+}
+
+// ====== تذكيرات التقدير الزمني — تحكم كامل من الإعدادات ======
+export async function saveEstimationRemindersAction(cfg: EstimationReminderCfg) {
+  await requireStaff(["admin"]);
+  const clean: EstimationReminderCfg = {
+    enabled: !!cfg.enabled,
+    halfway: !!cfg.halfway,
+    before_end: !!cfg.before_end,
+    before_end_hours: Math.min(72, Math.max(1, Math.round(Number(cfg.before_end_hours) || 2))),
+    overdue: !!cfg.overdue,
+    overdue_repeat_hours: Math.min(168, Math.max(0, Math.round(Number(cfg.overdue_repeat_hours) || 0))),
+    cc_admins: !!cfg.cc_admins,
+    day_hours: Math.min(24, Math.max(1, Math.round(Number(cfg.day_hours) || 8))),
+  };
+  const repo = await getRepo();
+  await repo.settingsSet({ estimation_reminders: clean });
+  revalidatePath("/settings");
   return { ok: true };
 }
 

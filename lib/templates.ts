@@ -132,8 +132,14 @@ export function renderBlocks(
     `<div style="margin-top:14px"><div style="font-size:13px;font-weight:700;color:#475569;margin-bottom:4px">${title}</div>` +
     `<div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:12px 14px;font-size:14px;color:#0f172a;line-height:1.9">${body}</div></div>`;
 
-  const btn = (href: string, label: string, bg: string) =>
-    `<a href="${esc(href)}" style="display:inline-block;background:${bg};color:#ffffff;text-decoration:none;border-radius:10px;padding:10px 18px;font-size:14px;font-weight:700;margin:4px 0 0 8px">${label}</a>`;
+  // أزرار بجداول — تظهر متناسقة في Outlook وGmail معاً
+  const btn = (href: string, label: string, bg: string) => `
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="display:inline-table;margin:6px 0 0 8px">
+      <tr><td bgcolor="${bg}" style="border-radius:10px;mso-padding-alt:11px 20px">
+        <a href="${esc(href)}" target="_blank" rel="noopener noreferrer"
+           style="display:inline-block;padding:11px 20px;font-family:'Segoe UI',Tahoma,Arial,sans-serif;font-size:14px;font-weight:700;color:#ffffff;text-decoration:none;border-radius:10px;white-space:nowrap">${label}</a>
+      </td></tr>
+    </table>`;
   for (const key of order) {
     if (key === "details" && blocks.details && vars["ticket.details"]) html += section("تفاصيل الطلب", esc(vars["ticket.details"]).replace(/\n/g, "<br>"));
     if (key === "note" && blocks.note && vars.note) html += section("آخر ملاحظة", esc(vars.note).replace(/\n/g, "<br>"));

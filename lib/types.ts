@@ -14,8 +14,10 @@ export type OverallStatus =
 
 export type DevStatus =
   | "new"
+  | "handed_to_dev"   // التيست سلّم الطلب للديف — بانتظار بدء التطوير
   | "in_progress"
   | "ready_for_test"
+  | "testing"         // التيست بدأ الاختبار فعلياً — يبدأ عدّاد تقدير التيست
   | "test_passed"
   | "test_failed"
   | "needs_info"
@@ -69,6 +71,9 @@ export interface Ticket {
   dev_est_hours?: number | null;  // تقدير المطور: ساعات
   test_est_days?: number | null;  // تقدير التيست: أيام
   test_est_hours?: number | null; // تقدير التيست: ساعات
+  dev_started_at?: string | null;  // بدء عدّاد الديف — عند «قيد التطوير»
+  test_started_at?: string | null; // بدء عدّاد التيست — عند «جاري الاختبار»
+  reminders_sent?: Record<string, string> | null; // أي تذكيرات أُرسلت (idempotency): { "dev.halfway": iso, ... }
   is_urgent?: boolean;         // تذكرة «دعم فوري»
   dev_status: DevStatus;
   source: "internal" | "web_guest" | "update_form";
@@ -278,7 +283,31 @@ export interface Settings {
   user_permissions: UserPermissionOverrides; // استثناءات فردية: true سماح / false منع / غير موجود يرث الدور
   custom_fields: CustomFieldCfg[];   // منشئ الحقول المخصصة
   track_cfg: TrackPageCfg;           // ماذا تعرض صفحة الاستعلام العامة
+  estimation_reminders: EstimationReminderCfg; // تذكيرات التقدير الزمني — تحكم كامل من الإعدادات
 }
+
+// ===== تذكيرات التقدير الزمني (الديف والتيست) — قابلة للتحكم من الإعدادات =====
+export interface EstimationReminderCfg {
+  enabled: boolean;
+  halfway: boolean;            // تذكير عند منتصف مدة التقدير
+  before_end: boolean;         // تذكير قبل نهاية التقدير
+  before_end_hours: number;    // كم ساعة قبل النهاية (افتراضي 2)
+  overdue: boolean;            // إيميل تأخير عند تجاوز التقدير
+  overdue_repeat_hours: number; // تكرار إيميل التأخير كل كم ساعة (0 = مرة واحدة)
+  cc_admins: boolean;          // نسخة للإدارة في تذكيرات التأخير
+  day_hours: number;           // كم ساعة يعادل «اليوم» في حساب المهلة (8 = يوم عمل، 24 = يوم كامل)
+}
+
+export const DEFAULT_ESTIMATION_REMINDERS: EstimationReminderCfg = {
+  enabled: true,
+  halfway: true,
+  before_end: true,
+  before_end_hours: 2,
+  overdue: true,
+  overdue_repeat_hours: 24,
+  cc_admins: true,
+  day_hours: 8,
+};
 
 // مفاتيح حقول النماذج الخاضعة للتحكم (طلب داخلي + نموذج الضيوف)
 export type FormFieldKey =

@@ -75,17 +75,25 @@ export async function GET(req: Request) {
       }
       body.timeline = steps;
     } else {
-      const events = await repo.eventList(t.id);
-      body.timeline = [
-        { status_label: "تم إنشاء الطلب", at: t.created_at },
-        ...events
-          .filter((e) => e.type === "field.changed")
-          .reverse()
-          .map((e) => ({
-            status_label: STATUS_LABELS[(e.new_values as { dev_status: DevStatus }).dev_status] ?? "",
-            at: e.created_at,
-          })),
-      ];
+      // الطلب العادي: مسار يجمع تغييرات الحالة + قرارات القبول/الرفض/الإسناد بالأسماء من سجل التدقيق
+      const [events, audit] = await Promise.all([repo.eventList(t.id), repo.auditList("ticket", t.id)]);
+      const nameOf = (label: string | null) => (label ?? "").split(" (")[0] || "—";
+      const steps: { status_label: string; at: string }[] = [{ status_label: "تم إنشاء الطلب", at: t.created_at }];
+      for (const a of [...audit].reverse()) {
+        const who = nameOf(a.actor_label);
+        if (a.action === "tester.assigned") steps.push({ status_label: `🧪 أُسند الاختبار إلى ${String((a.new_values as { tester_name?: string })?.tester_name ?? "—")}`, at: a.created_at });
+        else if (a.action === "developer.assigned") steps.push({ status_label: `👨‍💻 أُسند التطوير إلى ${String((a.new_values as { developer_name?: string })?.developer_name ?? "—")}`, at: a.created_at });
+        else if (a.action === "tester.accepted") steps.push({ status_label: `✅ وافق التيستر ${who} على التكليف`, at: a.created_at });
+        else if (a.action === "tester.declined") steps.push({ status_label: `❌ رفض التيستر ${who} التكليف — بانتظار إعادة الإسناد`, at: a.created_at });
+        else if (a.action === "developer.accepted") steps.push({ status_label: `✅ وافق المطور ${who} على التكليف`, at: a.created_at });
+        else if (a.action === "developer.declined") steps.push({ status_label: `❌ رفض المطور ${who} التكليف — بانتظار إعادة الإسناد`, at: a.created_at });
+      }
+      for (const e of events.filter((x) => x.type === "field.changed").reverse()) {
+        const label = STATUS_LABELS[(e.new_values as { dev_status: DevStatus }).dev_status];
+        if (label) steps.push({ status_label: `${label} — ${nameOf(e.actor_label)}`, at: e.created_at });
+      }
+      steps.sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
+      body.timeline = steps;
     }
   }
 

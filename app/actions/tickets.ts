@@ -352,7 +352,14 @@ export async function testerResultAction(formData: FormData) {
   const repo = await getRepo();
   const t = await repo.ticketByCode(code);
   if (!t) redirect("/testing");
-  if (t.dev_status !== "ready_for_test" || !["test_passed", "test_failed"].includes(result)) {
+  // «جاهز للاختبار» → يبدأ بـ«جاري الاختبار» (يبدأ عدّاد تقدير التيست) — ثم يحكم بالنجاح/الفشل
+  if (result === "testing") {
+    if (t.dev_status !== "ready_for_test") redirect(`/testing?err=${enc("هذه التذكرة ليست جاهزة لبدء الاختبار")}`);
+    await changeStatusOp(t.id, "testing", labelOf(actor));
+    revalidatePath("/testing");
+    redirect(`/testing?ok=${enc("بدأ الاختبار — عدّاد تقدير التيست انطلق ⏱️")}`);
+  }
+  if (!["ready_for_test", "testing"].includes(t.dev_status) || !["test_passed", "test_failed"].includes(result)) {
     redirect(`/testing?err=${enc("هذه التذكرة ليست في انتظار الاختبار")}`);
   }
   if (result === "test_failed" && note.length < 3) {

@@ -1,7 +1,8 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type { Repo, TicketFilter } from "./index";
-import type { AuditEntry, Client, CustomFieldCfg, EmailLog, FormFieldCfg, Job, Meeting, MeetingParticipant, PermKey, PrivateAccessLink, Role, RolePermissions, Settings, Staff, Ticket, TicketAssignment, TicketEvent, TrackPageCfg, UrgentFormFieldCfg, UserPermissionOverrides } from "../types";
-import { DEFAULT_FORM_FIELDS, DEFAULT_ROLE_PERMISSIONS, DEFAULT_TRACK_CFG, DEFAULT_URGENT_FORM_FIELDS } from "../types";
+import type { AuditEntry, Client, CustomFieldCfg, EmailLog, EstimationReminderCfg, FormFieldCfg, Job, Meeting, MeetingParticipant, PermKey, PrivateAccessLink, Role, RolePermissions, Settings, Staff, Ticket, TicketAssignment, TicketEvent, TrackPageCfg, UrgentFormFieldCfg, UserPermissionOverrides } from "../types";
+import { DEFAULT_FORM_FIELDS, DEFAULT_ROLE_PERMISSIONS, DEFAULT_TRACK_CFG,
+  DEFAULT_ESTIMATION_REMINDERS, DEFAULT_URGENT_FORM_FIELDS } from "../types";
 import { SEED_RULES, SEED_STAFF, SEED_TEMPLATES, SEED_TICKETS } from "../seed";
 import { genId, genTicketCode, nowIso } from "../util";
 
@@ -90,6 +91,11 @@ export async function createSupabaseRepo(): Promise<Repo> {
     if (m.track_cfg) {
       try { track_cfg = { ...DEFAULT_TRACK_CFG, ...(JSON.parse(m.track_cfg) as Partial<TrackPageCfg>) }; } catch { /* الافتراضي */ }
     }
+    // تذكيرات التقدير الزمني — قابلة للتحكم بالكامل من الإعدادات
+    let estimation_reminders: EstimationReminderCfg = DEFAULT_ESTIMATION_REMINDERS;
+    if (m.estimation_reminders) {
+      try { estimation_reminders = { ...DEFAULT_ESTIMATION_REMINDERS, ...(JSON.parse(m.estimation_reminders) as Partial<EstimationReminderCfg>) }; } catch { /* الافتراضي */ }
+    }
     return {
       app_name: m.app_name ?? "بوابة الدعم الفني",
       allow_guest_submit: (m.allow_guest_submit ?? "1") === "1",
@@ -105,6 +111,7 @@ export async function createSupabaseRepo(): Promise<Repo> {
       user_permissions,
       custom_fields,
       track_cfg,
+      estimation_reminders,
     } as Settings;
   };
 

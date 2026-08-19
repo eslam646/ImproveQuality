@@ -4,9 +4,10 @@ import path from "path";
 import type { Repo, TicketFilter } from "./index";
 import type {
   AuditEntry, AutomationRule, Attachment, Client, CustomFieldCfg, EmailLog, EmailTemplate, FormFieldCfg, Job, Meeting, MeetingParticipant, Notification,
-  PermKey, PrivateAccessLink, Role, RolePermissions, Settings, Staff, Ticket, TicketAssignment, TicketEvent, TrackPageCfg, UrgentFormFieldCfg, UserPermissionOverrides,
+  EstimationReminderCfg, PermKey, PrivateAccessLink, Role, RolePermissions, Settings, Staff, Ticket, TicketAssignment, TicketEvent, TrackPageCfg, UrgentFormFieldCfg, UserPermissionOverrides,
 } from "../types";
-import { DEFAULT_FORM_FIELDS, DEFAULT_ROLE_PERMISSIONS, DEFAULT_TRACK_CFG, DEFAULT_URGENT_FORM_FIELDS } from "../types";
+import { DEFAULT_FORM_FIELDS, DEFAULT_ROLE_PERMISSIONS, DEFAULT_TRACK_CFG,
+  DEFAULT_ESTIMATION_REMINDERS, DEFAULT_URGENT_FORM_FIELDS } from "../types";
 import { SEED_RULES, SEED_STAFF, SEED_TEMPLATES, SEED_TICKETS } from "../seed";
 import { genId, genTicketCode, nowIso } from "../util";
 
@@ -120,6 +121,9 @@ export function createSqliteRepo(): Repo {
   try { db.exec("ALTER TABLE tickets ADD COLUMN dev_est_hours REAL"); } catch { /* موجود */ }
   try { db.exec("ALTER TABLE tickets ADD COLUMN test_est_days REAL"); } catch { /* موجود */ }
   try { db.exec("ALTER TABLE tickets ADD COLUMN test_est_hours REAL"); } catch { /* موجود */ }
+  try { db.exec("ALTER TABLE tickets ADD COLUMN dev_started_at TEXT"); } catch { /* موجود */ }
+  try { db.exec("ALTER TABLE tickets ADD COLUMN test_started_at TEXT"); } catch { /* موجود */ }
+  try { db.exec("ALTER TABLE tickets ADD COLUMN reminders_sent TEXT"); } catch { /* موجود */ }
   try { db.exec("ALTER TABLE tickets ADD COLUMN is_urgent INTEGER NOT NULL DEFAULT 0"); } catch { /* موجود */ }
   try { db.exec("ALTER TABLE tickets ADD COLUMN title TEXT"); } catch { /* موجود */ }
   try { db.exec("ALTER TABLE tickets ADD COLUMN request_type TEXT NOT NULL DEFAULT 'issue'"); } catch { /* موجود */ }
@@ -197,7 +201,10 @@ export function createSqliteRepo(): Repo {
   const mapTicket = (r: TicketRow): Ticket => {
     let custom_data: Record<string, string> = {};
     try { custom_data = r.custom_data ? (JSON.parse(r.custom_data) as Record<string, string>) : {}; } catch { /* فارغ */ }
-    return { ...(r as unknown as Ticket), custom_data };
+    let reminders_sent: Record<string, string> | null = null;
+    const raw = (r as unknown as { reminders_sent?: string | null }).reminders_sent;
+    try { reminders_sent = raw ? (JSON.parse(raw) as Record<string, string>) : null; } catch { /* فارغ */ }
+    return { ...(r as unknown as Ticket), custom_data, reminders_sent };
   };
 
   const settingsGet: Repo["settingsGet"] = async () => {
@@ -250,6 +257,11 @@ export function createSqliteRepo(): Repo {
     if (m.track_cfg) {
       try { track_cfg = { ...DEFAULT_TRACK_CFG, ...(JSON.parse(m.track_cfg) as Partial<TrackPageCfg>) }; } catch { /* الافتراضي */ }
     }
+    // تذكيرات التقدير الزمني — قابلة للتحكم بالكامل من الإعدادات
+    let estimation_reminders: EstimationReminderCfg = DEFAULT_ESTIMATION_REMINDERS;
+    if (m.estimation_reminders) {
+      try { estimation_reminders = { ...DEFAULT_ESTIMATION_REMINDERS, ...(JSON.parse(m.estimation_reminders) as Partial<EstimationReminderCfg>) }; } catch { /* الافتراضي */ }
+    }
     return {
       app_name: m.app_name ?? "بوابة الدعم الفني",
       allow_guest_submit: (m.allow_guest_submit ?? "1") === "1",
@@ -265,6 +277,7 @@ export function createSqliteRepo(): Repo {
       user_permissions,
       custom_fields,
       track_cfg,
+      estimation_reminders,
     } as Settings;
   };
 
@@ -343,6 +356,7 @@ export function createSqliteRepo(): Repo {
       if (patch.user_permissions !== undefined) ins.run("user_permissions", JSON.stringify(patch.user_permissions));
       if (patch.custom_fields !== undefined) ins.run("custom_fields", JSON.stringify(patch.custom_fields));
       if (patch.track_cfg !== undefined) ins.run("track_cfg", JSON.stringify(patch.track_cfg));
+      if (patch.estimation_reminders !== undefined) ins.run("estimation_reminders", JSON.stringify(patch.estimation_reminders));
     },
     async settingsValueGet(key) {
       const r = db.prepare("SELECT value FROM settings WHERE key=?").get(key) as { value: string } | undefined;
@@ -463,10 +477,14 @@ export function createSqliteRepo(): Repo {
         "tester_assignment_status", "developer_assignment_status", "linked_ticket_id", "urgent_reason", "affected_service",
         "urgent_requested_at", "urgent_started_at", "urgent_ended_at", "urgent_result", "actual_minutes", "version",
         "developer_id", "developer_name", "dev_status", "last_status_change", "updated_at", "tester_id", "tester_name",
-        "est_hours", "est_days", "dev_est_days", "dev_est_hours", "test_est_days", "test_est_hours", "is_urgent",
+        "est_hours", "est_days", "dev_est_days", "dev_est_hours", "test_est_days", "test_est_hours", "dev_started_at", "test_started_at", "is_urgent",
       ] as const;
       for (const k of fields) {
         if (patch[k] !== undefined) { sets.push(`${k}=?`); args.push(patch[k] as unknown); }
+      }
+      if (patch.reminders_sent !== undefined) {
+        sets.push("reminders_sent=?");
+        args.push(patch.reminders_sent ? JSON.stringify(patch.reminders_sent) : null);
       }
       if (sets.length) {
         args.push(id);
