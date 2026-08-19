@@ -19,8 +19,10 @@ export async function POST(req: Request) {
 
   const repo = await getRepo();
   const settings = await repo.settingsGet();
-  if (!settings.custom_fields.some((f) => f.type === "file")) {
-    return NextResponse.json({ error: "رفع الملفات غير مفعّل — فعّل حقل ملف من الإعدادات أولاً" }, { status: 403 });
+  const hasFileCustomField = settings.custom_fields.some((f) => f.type === "file");
+  const urgentAttachmentOn = settings.urgent_form_fields.some((f) => f.key === "attachment" && f.visible);
+  if (!hasFileCustomField && !urgentAttachmentOn) {
+    return NextResponse.json({ error: "رفع الملفات غير مفعّل — فعّله من الإعدادات أولاً (حقل ملف مخصص أو مرفقات الدعم الفوري)" }, { status: 403 });
   }
 
   const form = await req.formData().catch(() => null);

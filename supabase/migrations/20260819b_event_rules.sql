@@ -5,6 +5,8 @@ alter table automation_rules add constraint automation_rules_trigger_type_check 
   'tester.accepted','tester.declined','developer.accepted','developer.declined',
   'urgent.withdrawal','urgent.progress',
   'ticket.rejected','test.failed','ticket.delivered','note.added',
+  'est.dev.halfway','est.dev.before_end','est.dev.overdue',
+  'est.test.halfway','est.test.before_end','est.test.overdue',
   'field.changed','schedule.stale'
 ));
 

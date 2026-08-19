@@ -153,6 +153,12 @@ export function RuleBuilder({ initial, templates, staff }: {
             { v: "test.failed", l: "🧪 عند فشل الاختبار (يعود للمطور بالسبب)" },
             { v: "ticket.delivered", l: "📦 عند الإصلاح أو التسليم والإغلاق" },
             { v: "note.added", l: "💬 عند إضافة ملاحظة / رد جديد" },
+            { v: "est.dev.halfway", l: "⏳ منتصف مهلة تقدير الديف (التوقيت من ⏰ الإعدادات)" },
+            { v: "est.dev.before_end", l: "⚠️ قرب نهاية مهلة تقدير الديف" },
+            { v: "est.dev.overdue", l: "🔴 تجاوز تقدير الديف (التاسك متأخرة)" },
+            { v: "est.test.halfway", l: "⏳ منتصف مهلة تقدير التيست" },
+            { v: "est.test.before_end", l: "⚠️ قرب نهاية مهلة تقدير التيست" },
+            { v: "est.test.overdue", l: "🔴 تجاوز تقدير التيست (التاسك متأخرة)" },
             { v: "field.changed", l: "🔄 عند تغيير حقل معيّن" },
             { v: "schedule.stale", l: "⏰ مجدول: تذكير بالتذاكر المتوقفة (يفحص كل دقيقة ويرسل مرة واحدة يومياً)" },
           ] as { v: TriggerType; l: string }[]).map((o) => (

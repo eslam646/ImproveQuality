@@ -181,6 +181,8 @@ export type TriggerType =
   | "test.failed"            // فشل الاختبار (بسبب)
   | "ticket.delivered"       // تم الإصلاح أو التسليم والإغلاق
   | "note.added"             // ملاحظة / رد جديد
+  | "est.dev.halfway" | "est.dev.before_end" | "est.dev.overdue"    // تذكيرات تقدير الديف
+  | "est.test.halfway" | "est.test.before_end" | "est.test.overdue" // تذكيرات تقدير التيست
   | "field.changed"
   | "schedule.stale";
 
@@ -337,7 +339,7 @@ export interface FormFieldCfg {
   required: boolean;
 }
 
-export type UrgentFormFieldKey = "client" | "creator" | "title" | "affected_service" | "details" | "tester" | "developer";
+export type UrgentFormFieldKey = "client" | "creator" | "title" | "affected_service" | "details" | "attachment" | "tester" | "developer";
 export interface UrgentFormFieldCfg {
   key: UrgentFormFieldKey;
   label: string;
@@ -351,8 +353,9 @@ export const DEFAULT_URGENT_FORM_FIELDS: UrgentFormFieldCfg[] = [
   { key: "title", label: "عنوان المشكلة الطارئة", visible: true, required: true, locked: true },
   { key: "affected_service", label: "السيرفر / قاعدة البيانات / الخدمة المتأثرة", visible: true, required: true },
   { key: "details", label: "تفاصيل المشكلة الطارئة", visible: true, required: true, locked: true },
-  { key: "tester", label: "مسؤول الاختبار", visible: true, required: true, locked: true },
-  { key: "developer", label: "المطور", visible: true, required: true, locked: true },
+  { key: "attachment", label: "المرفقات (صور / فيديو / لوج)", visible: true, required: false },
+  { key: "tester", label: "مسؤول الاختبار", visible: true, required: true },
+  { key: "developer", label: "المطور", visible: true, required: true },
 ];
 
 export const DEFAULT_FORM_FIELDS: FormFieldCfg[] = [

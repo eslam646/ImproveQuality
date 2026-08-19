@@ -149,6 +149,27 @@ export const SEED_TEMPLATES: EmailTemplate[] = [
     created_at: nowIso(), updated_at: nowIso(),
   },
   {
+    id: "tmpl-est-halfway", name: "تذكير منتصف مهلة التقدير",
+    subject: "⏳ منتصف مهلة {{phase_role}} — {{code}}",
+    body_html: `مرحباً <b>{{assignee_name}}</b> 👋<br>وصلت إلى <b>منتصف المهلة المقدرة</b> لدورك في الطلب.<br><b>المتبقي:</b> {{remaining}}`,
+    blocks: { ...DEFAULT_TEMPLATE_BLOCKS, details: false, note: false, update_button: true },
+    created_at: nowIso(), updated_at: nowIso(),
+  },
+  {
+    id: "tmpl-est-before-end", name: "تذكير قرب نهاية مهلة التقدير",
+    subject: "⚠️ اقتربت نهاية مهلة {{phase_role}} — {{code}}",
+    body_html: `مرحباً <b>{{assignee_name}}</b> ⚠️<br>باقي <b>{{remaining}}</b> على نهاية المهلة المقدرة لدورك.<br>لو في عائق اكتب ملاحظة على الطلب فوراً حتى يعلم الجميع.`,
+    blocks: { ...DEFAULT_TEMPLATE_BLOCKS, details: false, note: false, update_button: true },
+    created_at: nowIso(), updated_at: nowIso(),
+  },
+  {
+    id: "tmpl-est-overdue", name: "التاسك متأخرة — تجاوز التقدير",
+    subject: "🔴 التاسك متأخرة عندك — تجاوزت تقدير {{phase_role}} بـ{{overdue_hours}} ساعة — {{code}}",
+    body_html: `مرحباً <b>{{assignee_name}}</b> 🔴<br>الطلب <b>تجاوز التقدير الزمني المحدد لدورك بـ{{overdue_hours}} ساعة تقريباً</b>.<br>حدّث الحالة أو اكتب سبب التأخير على الطلب.`,
+    blocks: { ...DEFAULT_TEMPLATE_BLOCKS, details: false, note: false, update_button: true },
+    created_at: nowIso(), updated_at: nowIso(),
+  },
+  {
     id: "tmpl-note-added", name: "ملاحظة / رد جديد على الطلب",
     subject: "💬 ملاحظة جديدة على {{code}} — {{actor_name}}",
     body_html: `أضاف <b>{{actor_name}}</b> ملاحظة على الطلب:<br><div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:12px;margin-top:8px">{{note}}</div>`,
@@ -290,6 +311,49 @@ export const SEED_RULES: AutomationRule[] = [
     actions: [
       { type: "send_email", to: [{ kind: "ref", ref: "ticket_parties" }], cc: [], template_id: "tmpl-note-added" },
       { type: "notify", to: [{ kind: "ref", ref: "ticket_parties" }], message: "💬 {{actor_name}} على {{code}}: {{note}}" },
+    ],
+    enabled: 1, run_count: 0, created_at: nowIso(),
+  },
+  // ═══ تذكيرات التقدير الزمني — 6 قواعد مستقلة (ديف/تيست × منتصف/قبل النهاية/تأخير) ═══
+  {
+    id: "rule-est-dev-halfway", name: "تقدير الديف: منتصف المهلة → تذكير للمطور", trigger_type: "est.dev.halfway", trigger_field: null,
+    conditions: [],
+    actions: [{ type: "send_email", to: [{ kind: "ref", ref: "developer" }], cc: [], template_id: "tmpl-est-halfway" }],
+    enabled: 1, run_count: 0, created_at: nowIso(),
+  },
+  {
+    id: "rule-est-dev-before-end", name: "تقدير الديف: قبل النهاية → تذكير للمطور", trigger_type: "est.dev.before_end", trigger_field: null,
+    conditions: [],
+    actions: [{ type: "send_email", to: [{ kind: "ref", ref: "developer" }], cc: [], template_id: "tmpl-est-before-end" }],
+    enabled: 1, run_count: 0, created_at: nowIso(),
+  },
+  {
+    id: "rule-est-dev-overdue", name: "تقدير الديف: تجاوز المهلة → المطور + الإدارة", trigger_type: "est.dev.overdue", trigger_field: null,
+    conditions: [],
+    actions: [
+      { type: "send_email", to: [{ kind: "ref", ref: "developer" }], cc: [{ kind: "role", role: "admin" }], template_id: "tmpl-est-overdue" },
+      { type: "notify", to: [{ kind: "ref", ref: "developer" }], message: "🔴 {{code}} تجاوزت تقدير الديف — متأخرة عندك" },
+    ],
+    enabled: 1, run_count: 0, created_at: nowIso(),
+  },
+  {
+    id: "rule-est-test-halfway", name: "تقدير التيست: منتصف المهلة → تذكير للتيستر", trigger_type: "est.test.halfway", trigger_field: null,
+    conditions: [],
+    actions: [{ type: "send_email", to: [{ kind: "ref", ref: "tester" }], cc: [], template_id: "tmpl-est-halfway" }],
+    enabled: 1, run_count: 0, created_at: nowIso(),
+  },
+  {
+    id: "rule-est-test-before-end", name: "تقدير التيست: قبل النهاية → تذكير للتيستر", trigger_type: "est.test.before_end", trigger_field: null,
+    conditions: [],
+    actions: [{ type: "send_email", to: [{ kind: "ref", ref: "tester" }], cc: [], template_id: "tmpl-est-before-end" }],
+    enabled: 1, run_count: 0, created_at: nowIso(),
+  },
+  {
+    id: "rule-est-test-overdue", name: "تقدير التيست: تجاوز المهلة → التيستر + الإدارة", trigger_type: "est.test.overdue", trigger_field: null,
+    conditions: [],
+    actions: [
+      { type: "send_email", to: [{ kind: "ref", ref: "tester" }], cc: [{ kind: "role", role: "admin" }], template_id: "tmpl-est-overdue" },
+      { type: "notify", to: [{ kind: "ref", ref: "tester" }], message: "🔴 {{code}} تجاوزت تقدير التيست — متأخرة عندك" },
     ],
     enabled: 1, run_count: 0, created_at: nowIso(),
   },

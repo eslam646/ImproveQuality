@@ -21,6 +21,12 @@ const TRIGGER_LABELS: Record<TriggerType, string> = {
   "test.failed": "🧪 فشل الاختبار",
   "ticket.delivered": "📦 الإصلاح / التسليم",
   "note.added": "💬 ملاحظة جديدة",
+  "est.dev.halfway": "⏳ منتصف مهلة الديف",
+  "est.dev.before_end": "⚠️ قرب نهاية مهلة الديف",
+  "est.dev.overdue": "🔴 تجاوز تقدير الديف",
+  "est.test.halfway": "⏳ منتصف مهلة التيست",
+  "est.test.before_end": "⚠️ قرب نهاية مهلة التيست",
+  "est.test.overdue": "🔴 تجاوز تقدير التيست",
   "field.changed": "🔄 عند تغيير حقل",
   "schedule.stale": "⏰ مجدول (تذكير بالمتوقفة)",
 };

@@ -3,6 +3,7 @@ import { requireActionPermission } from "@/lib/auth";
 import { getRepo } from "@/lib/db";
 import { Card, Field, inputCls, Msg, selectCls } from "@/components/ui";
 import { SubmitButton } from "@/components/submit-button";
+import { UrgentAttachmentInput } from "@/components/urgent-attachment-input";
 
 export const dynamic = "force-dynamic";
 
@@ -27,6 +28,7 @@ export default async function InstantSupportPage({
       case "title": return <Field label={label} hint="عنوان مختصر يظهر في الجدول والإيميلات"><input name="title" required={f.required} minLength={3} maxLength={180} className={inputCls} placeholder="مثال: توقف خدمة الفواتير على سيرفر الإنتاج" /></Field>;
       case "affected_service": return <Field label={label}><input name="affected_service" required={f.required} minLength={f.required ? 2 : 0} className={inputCls} placeholder="مثال: Production API / SQL Server / خدمة الفواتير" /></Field>;
       case "details": return <Field label={label} hint="اكتب ما حدث وتأثيره والخطوات التي جُربت وما المطلوب فوراً"><textarea name="details" required={f.required} minLength={10} rows={9} className={inputCls} placeholder="السيرفر متوقف منذ الساعة… والخطوات التي تم تنفيذها…" /></Field>;
+      case "attachment": return <Field label={label} hint="صورة الشاشة أو الفيديو أو ملف اللوج — يوضح المشكلة فوراً"><UrgentAttachmentInput required={f.required} /></Field>;
       case "tester": return <Field label={label} hint="سيصله إيميل تكليف فوري"><select name="tester_id" required={f.required} className={selectCls} defaultValue=""><option value="" disabled>اختر التيست…</option>{testers.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select></Field>;
       case "developer": return <Field label={label} hint="سيصله إيميل بعد إسناد التيست"><select name="developer_id" required={f.required} className={selectCls} defaultValue=""><option value="" disabled>اختر المطور…</option>{developers.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}</select></Field>;
     }

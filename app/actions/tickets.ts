@@ -170,8 +170,14 @@ export async function createInstantSupportAction(formData: FormData) {
   if (title.length < 3) fail("عنوان المشكلة الطارئة إجباري");
   if (visible("affected_service") && required("affected_service") && affected_service.length < 2) fail("حدد السيرفر أو قاعدة البيانات أو الخدمة المتأثرة");
   if (details.length < 10) fail("اكتب تفاصيل المشكلة الطارئة وخطواتها بوضوح");
-  if (!tester_id) fail("اختيار مسؤول الاختبار إجباري في الدعم الفوري");
-  if (!developer_id) fail("اختيار المطور إجباري في الدعم الفوري");
+  // التيست والديف: الإجبارية من إعدادات نموذج الدعم الفوري — والإخفاء يلغي الإجبارية تلقائياً
+  const attachment_ref = String(formData.get("attachment_ref") ?? "").trim();
+  if (visible("attachment") && required("attachment") && !/^[^|]{1,200}\|(https?:\/\/|local:\/\/)/.test(attachment_ref)) {
+    fail("المرفق إجباري في الدعم الفوري — ارفع صورة أو فيديو أو ملف لوج يوضح المشكلة");
+  }
+  if (visible("tester") && required("tester") && !tester_id) fail("اختيار مسؤول الاختبار إجباري في الدعم الفوري");
+  if (visible("developer") && required("developer") && !developer_id) fail("اختيار المطور إجباري في الدعم الفوري");
+  if (!tester_id && !developer_id) fail("اختر التيست أو المطور على الأقل — لا يصح دعم فوري بلا مكلَّف");
 
   const ticket = await createTicketOp({
     client_name,
@@ -184,14 +190,30 @@ export async function createInstantSupportAction(formData: FormData) {
     priority: "critical",
     urgent_reason: details,
     affected_service: visible("affected_service") && affected_service ? affected_service : null,
-    tester_id,
-    developer_id,
+    tester_id: tester_id || null,
+    developer_id: developer_id || null,
     is_urgent: true,
     actor: { staff_id: actor.id, label: labelOf(actor) },
     source: "internal",
   });
+  // ربط المرفق المرفوع مسبقاً بالطلب — يظهر في قائمة المرفقات مباشرة
+  if (attachment_ref) {
+    const [attName, attUrl] = [attachment_ref.slice(0, attachment_ref.indexOf("|")), attachment_ref.slice(attachment_ref.indexOf("|") + 1)];
+    if (attName && attUrl) {
+      const { genId } = await import("@/lib/util");
+      const isLocal = attUrl.startsWith("local://");
+      await repo.attachmentAdd({
+        id: genId("att"), ticket_id: ticket.id, file_name: attName, size_bytes: 0,
+        path: isLocal ? attUrl.replace("local://", "") : attUrl, driver: isLocal ? "local" : "supabase", uploaded_by: requester!.name,
+      });
+      await repo.eventAdd({
+        ticket_id: ticket.id, type: "attachment.added", actor_label: requester!.name,
+        old_values: null, new_values: { file: attName },
+      });
+    }
+  }
   revalidatePath("/dashboard");
-  redirect(`/tickets/${ticket.code}?created=1&ok=${enc("تم إنشاء طلب الدعم الفوري وإرسال التكليف للتيست والمطور ✓")}`);
+  redirect(`/tickets/${ticket.code}?created=1&ok=${enc("تم إنشاء طلب الدعم الفوري وإرسال التكليف ✓")}`);
 }
 
 // ═══ إسناد التيست (أولاً دائماً) + تقدير التنفيذ ═══
