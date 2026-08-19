@@ -227,8 +227,9 @@ export function createSqliteRepo(): Repo {
     if (m.urgent_form_fields) {
       try {
         const saved = JSON.parse(m.urgent_form_fields) as UrgentFormFieldCfg[];
+        // «القفل» قرار نظام يأتي من الكود دائماً — المحفوظ يتحكم في الظاهر/الإجباري/الترتيب فقط
         const known = saved.filter((s) => DEFAULT_URGENT_FORM_FIELDS.some((d) => d.key === s.key))
-          .map((s) => ({ ...DEFAULT_URGENT_FORM_FIELDS.find((d) => d.key === s.key)!, ...s }));
+          .map((s) => { const d = DEFAULT_URGENT_FORM_FIELDS.find((x) => x.key === s.key)!; return { ...d, ...s, locked: d.locked, label: d.label }; });
         urgent_form_fields = [...known, ...DEFAULT_URGENT_FORM_FIELDS.filter((d) => !known.some((s) => s.key === d.key))];
       } catch { /* الافتراضي */ }
     }
