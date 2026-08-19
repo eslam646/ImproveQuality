@@ -17,7 +17,8 @@ export async function upsertTemplateAction(input: { id?: string; name: string; s
   const parsed = templateSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message };
   const repo = await getRepo();
-  const t = await repo.templateUpsert({ ...parsed.data, blocks: input.blocks ?? null });
+  // مهم: تمرير id حتى يكون الحفظ «تحديثاً» للقالب نفسه — بدونه كان كل حفظ ينشئ نسخة مكررة
+  const t = await repo.templateUpsert({ id: input.id || undefined, ...parsed.data, blocks: input.blocks ?? null });
   revalidatePath("/templates");
   return { ok: true, id: t.id };
 }
