@@ -181,6 +181,9 @@ export function createSqliteRepo(): Repo {
   // أي قالب افتراضي جديد يُضاف مرة واحدة فقط؛ القوالب المعدلة لا يتم استبدالها
   const ensureTemplate = db.prepare("INSERT OR IGNORE INTO email_templates (id,name,subject,body_html,blocks,created_at,updated_at) VALUES (?,?,?,?,?,?,?)");
   SEED_TEMPLATES.forEach((t) => ensureTemplate.run(t.id, t.name, t.subject, t.body_html, t.blocks ? JSON.stringify(t.blocks) : null, t.created_at, t.updated_at));
+  // القواعد الافتراضية الجديدة تُضاف للقواعد الموجودة دون المساس بتعديلات الأدمن
+  const ensureRule = db.prepare("INSERT OR IGNORE INTO automation_rules (id,name,trigger_type,trigger_field,conditions,actions,enabled,run_count,created_at) VALUES (?,?,?,?,?,?,?,?,?)");
+  SEED_RULES.forEach((r) => ensureRule.run(r.id, r.name, r.trigger_type, r.trigger_field, JSON.stringify(r.conditions), JSON.stringify(r.actions), r.enabled, r.run_count, r.created_at));
 
   const mapTemplate = (r: Omit<EmailTemplate, "blocks"> & { blocks: string | null }): EmailTemplate => ({
     ...r,

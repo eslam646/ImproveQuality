@@ -9,7 +9,18 @@ export const dynamic = "force-dynamic";
 
 const TRIGGER_LABELS: Record<TriggerType, string> = {
   "ticket.created": "🆕 عند إنشاء طلب",
+  "tester.assigned": "🧪 عند تكليف التيستر",
   "ticket.assigned": "👤 عند تعيين مطور",
+  "tester.accepted": "✅ قبول التيستر",
+  "tester.declined": "❌ رفض التيستر",
+  "developer.accepted": "✅ قبول المطور",
+  "developer.declined": "❌ رفض المطور",
+  "urgent.withdrawal": "🙅 اعتذار عن الدعم الفوري",
+  "urgent.progress": "🚨 موقف الدعم الفوري",
+  "ticket.rejected": "❌ رفض الطلب نهائياً",
+  "test.failed": "🧪 فشل الاختبار",
+  "ticket.delivered": "📦 الإصلاح / التسليم",
+  "note.added": "💬 ملاحظة جديدة",
   "field.changed": "🔄 عند تغيير حقل",
   "schedule.stale": "⏰ مجدول (تذكير بالمتوقفة)",
 };

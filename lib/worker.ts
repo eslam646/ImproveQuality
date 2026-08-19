@@ -55,21 +55,27 @@ async function executeJob(job: Job, settings: Settings): Promise<void> {
   const repo = await getRepo();
   const action = (job.payload as { action: Action }).action;
   const ticketId = (job.payload as { ticket_id: string }).ticket_id;
-  const extra = ((job.payload as { extra_vars?: { old_status: string | null; note: string | null } }).extra_vars) ?? { old_status: null, note: null };
+  const extra = ((job.payload as { extra_vars?: { old_status: string | null; note: string | null; custom?: Record<string, string> | null; exclude_staff_id?: string | null } }).extra_vars)
+    ?? { old_status: null, note: null };
   const ticket = await repo.ticketById(ticketId);
   if (!ticket) throw new Error("التذكرة غير موجودة");
 
   if (action.type === "send_email") {
     const toRes = await resolveRecipients(repo, ticket, action.to);
     const ccRes = await resolveRecipients(repo, ticket, action.cc);
-    let to = recipientEmails(toRes);
-    let cc = recipientEmails(ccRes).filter((e) => !to.includes(e));
+    // منفّذ الفعل لا يستلم إيميلاً عن فعله هو (مثلاً: التيستر الذي قَبِل لا يصله «قَبِل التيستر»)
+    const excludeId = extra.exclude_staff_id ?? null;
+    const excludeEmail = excludeId
+      ? [...toRes.staff, ...ccRes.staff].find((s) => s.id === excludeId)?.email?.toLowerCase() ?? null
+      : null;
+    let to = recipientEmails(toRes).filter((e) => e !== excludeEmail);
+    let cc = recipientEmails(ccRes).filter((e) => !to.includes(e) && e !== excludeEmail);
     if (!to.length && cc.length) { to = cc; cc = []; } // لا مستلم مباشر؟ ترقية CC إلى To
     if (!to.length) return; // لا مستلمين إطلاقاً (مثلاً لا مطور معيّن) — ليس خطأ
 
     const tmpl = await repo.templateGet(action.template_id);
     if (!tmpl) throw new Error(`القالب غير موجود: ${action.template_id}`);
-    const vars = templateVars(ticket, settings, extra);
+    const vars = { ...templateVars(ticket, settings, extra), ...(extra.custom ?? {}) };
     const subject = renderTemplate(tmpl.subject, vars, { htmlEscape: false });
     const intro = renderTemplate(tmpl.body_html, vars);
     // القالب له أقسام مرئية يتحكم بها الأدمن — الافتراضي عند عدم التخصيص
@@ -100,10 +106,11 @@ async function executeJob(job: Job, settings: Settings): Promise<void> {
   }
 
   if (action.type === "notify") {
-    const vars = templateVars(ticket, settings, extra);
+    const vars = { ...templateVars(ticket, settings, extra), ...(extra.custom ?? {}) };
     const msg = renderTemplate(action.message, vars, { htmlEscape: false });
     const res = await resolveRecipients(repo, ticket, action.to);
     for (const s of res.staff) {
+      if (s.id === (extra.exclude_staff_id ?? null)) continue;
       await repo.notifyAdd({ staff_id: s.id, ticket_id: ticket.id, message: msg });
     }
     return;

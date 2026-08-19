@@ -141,7 +141,18 @@ export function RuleBuilder({ initial, templates, staff }: {
         <div className="grid gap-2">
           {([
             { v: "ticket.created", l: "🆕 عند إنشاء طلب جديد" },
+            { v: "tester.assigned", l: "🧪 عند تكليف التيستر (إيميل التكليف بأزرار القبول/الرفض)" },
             { v: "ticket.assigned", l: "👤 عند تعيين/إعادة تعيين مطور على تذكرة" },
+            { v: "tester.accepted", l: "✅ عند قبول التيستر للتكليف" },
+            { v: "tester.declined", l: "❌ عند رفض التيستر للتكليف (بسبب)" },
+            { v: "developer.accepted", l: "✅ عند قبول المطور للتكليف" },
+            { v: "developer.declined", l: "❌ عند رفض المطور للتكليف (بسبب)" },
+            { v: "urgent.withdrawal", l: "🙅 عند الاعتذار عن الدعم الفوري بعد القبول" },
+            { v: "urgent.progress", l: "🚨 عند تحديث موقف الدعم الفوري (مازلت أعمل / انتهيت)" },
+            { v: "ticket.rejected", l: "❌ عند رفض الطلب نهائياً (بسبب)" },
+            { v: "test.failed", l: "🧪 عند فشل الاختبار (يعود للمطور بالسبب)" },
+            { v: "ticket.delivered", l: "📦 عند الإصلاح أو التسليم والإغلاق" },
+            { v: "note.added", l: "💬 عند إضافة ملاحظة / رد جديد" },
             { v: "field.changed", l: "🔄 عند تغيير حقل معيّن" },
             { v: "schedule.stale", l: "⏰ مجدول: تذكير بالتذاكر المتوقفة (يفحص كل دقيقة ويرسل مرة واحدة يومياً)" },
           ] as { v: TriggerType; l: string }[]).map((o) => (

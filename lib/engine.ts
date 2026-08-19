@@ -7,7 +7,7 @@ import { FINAL_STATUSES } from "./labels";
 
 export interface FiredEvent {
   id: number;
-  type: TriggerType | "note.added" | "attachment.added";
+  type: TriggerType | "attachment.added";
   changedField?: string | null;
   ctx: AutomationContext;
 }
@@ -128,6 +128,9 @@ async function enqueueAction(rule: AutomationRule, action: Action, evt: FiredEve
     extra_vars: {
       old_status: (evt.ctx.old?.dev_status as DevStatus | undefined) ?? null,
       note: (evt.ctx as { note?: string }).note ?? null,
+      // متغيرات الحدث الإضافية (actor_name, reason, progress_label...) + استثناء منفّذ الفعل من البريد
+      custom: evt.ctx.vars ?? null,
+      exclude_staff_id: evt.ctx.actor_staff_id ?? null,
     },
   };
   await repo.jobEnqueue({

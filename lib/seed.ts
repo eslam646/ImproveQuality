@@ -98,6 +98,63 @@ export const SEED_TEMPLATES: EmailTemplate[] = [
     blocks: { ...DEFAULT_TEMPLATE_BLOCKS, details: false, note: false, update_button: true },
     created_at: nowIso(), updated_at: nowIso(),
   },
+  // ═══ قوالب الأحداث المفصولة — كل إيميل في النظام له قالب وقاعدة أتمتة ═══
+  {
+    id: "tmpl-tester-accepted", name: "قبول التيستر للتكليف",
+    subject: "✅ قبول التيستر للتكليف {{code}} — {{actor_name}}",
+    body_html: `<b>{{actor_name}}</b> ({{actor_role}}) وافق على تكليف الاختبار وسيبدأ العمل على الطلب.`,
+    blocks: { ...DEFAULT_TEMPLATE_BLOCKS, note: false, update_button: false },
+    created_at: nowIso(), updated_at: nowIso(),
+  },
+  {
+    id: "tmpl-tester-declined", name: "رفض التيستر للتكليف",
+    subject: "❌ رفض التيستر للتكليف {{code}} — {{actor_name}}",
+    body_html: `<b>{{actor_name}}</b> ({{actor_role}}) رفض تكليف الاختبار.<br><b>السبب:</b> {{reason}}<br>الطلب بانتظار إعادة إسناد تيستر آخر.`,
+    blocks: { ...DEFAULT_TEMPLATE_BLOCKS, note: false, update_button: false },
+    created_at: nowIso(), updated_at: nowIso(),
+  },
+  {
+    id: "tmpl-dev-accepted", name: "قبول المطور للتكليف",
+    subject: "✅ قبول المطور للتكليف {{code}} — {{actor_name}}",
+    body_html: `<b>{{actor_name}}</b> ({{actor_role}}) وافق على تكليف التطوير.`,
+    blocks: { ...DEFAULT_TEMPLATE_BLOCKS, note: false, update_button: false },
+    created_at: nowIso(), updated_at: nowIso(),
+  },
+  {
+    id: "tmpl-dev-declined", name: "رفض المطور للتكليف",
+    subject: "❌ رفض المطور للتكليف {{code}} — {{actor_name}}",
+    body_html: `<b>{{actor_name}}</b> ({{actor_role}}) رفض تكليف التطوير.<br><b>السبب:</b> {{reason}}<br>الطلب بانتظار إعادة إسناد مطور آخر.`,
+    blocks: { ...DEFAULT_TEMPLATE_BLOCKS, note: false, update_button: false },
+    created_at: nowIso(), updated_at: nowIso(),
+  },
+  {
+    id: "tmpl-rejected", name: "رفض الطلب نهائياً",
+    subject: "❌ تم رفض الطلب {{code}} — {{client_name}}",
+    body_html: `تم <b>رفض</b> الطلب بواسطة {{actor_name}}.<br><b>سبب الرفض:</b> {{reason}}`,
+    blocks: { ...DEFAULT_TEMPLATE_BLOCKS, note: false, update_button: false },
+    created_at: nowIso(), updated_at: nowIso(),
+  },
+  {
+    id: "tmpl-test-failed", name: "فشل الاختبار — عودة للمطور",
+    subject: "🧪 فشل اختبار الطلب {{code}} — عاد للمطور",
+    body_html: `أعاد <b>{{actor_name}}</b> الطلب للمطور بعد فشل الاختبار.<br><b>سبب الفشل / المشكلة:</b> {{reason}}`,
+    blocks: { ...DEFAULT_TEMPLATE_BLOCKS, note: false, update_button: true },
+    created_at: nowIso(), updated_at: nowIso(),
+  },
+  {
+    id: "tmpl-delivered", name: "تم الإصلاح / التسليم والإغلاق",
+    subject: "{{status_label}} — طلبك {{code}}",
+    body_html: `يسعدنا إبلاغك بأن طلبك وصل إلى حالة <b>{{status_label}}</b> بواسطة {{actor_name}}.<br>{{note}}`,
+    blocks: { ...DEFAULT_TEMPLATE_BLOCKS, note: false, update_button: false },
+    created_at: nowIso(), updated_at: nowIso(),
+  },
+  {
+    id: "tmpl-note-added", name: "ملاحظة / رد جديد على الطلب",
+    subject: "💬 ملاحظة جديدة على {{code}} — {{actor_name}}",
+    body_html: `أضاف <b>{{actor_name}}</b> ملاحظة على الطلب:<br><div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:12px;margin-top:8px">{{note}}</div>`,
+    blocks: { ...DEFAULT_TEMPLATE_BLOCKS, details: false, note: false, update_button: false },
+    created_at: nowIso(), updated_at: nowIso(),
+  },
 ];
 
 export const SEED_RULES: AutomationRule[] = [
@@ -133,6 +190,106 @@ export const SEED_RULES: AutomationRule[] = [
     conditions: [{ field: "dev_status", op: "in", value: "new,in_progress,ready_for_test,needs_info,test_failed" }],
     actions: [
       { type: "send_email", to: [{ kind: "ref", ref: "developer" }], cc: [{ kind: "ref", ref: "developer_manager" }, { kind: "role", role: "admin" }], template_id: "tmpl-reminder" },
+    ],
+    enabled: 1, run_count: 0, created_at: nowIso(),
+  },
+  // ═══ قواعد الأحداث المفصولة — كل إيميل له قاعدة مستقلة تتحكم في مستلميها بالكامل ═══
+  {
+    id: "rule-tester-assigned", name: "تكليف التيستر → إيميل التكليف بأزرار القبول/الرفض", trigger_type: "tester.assigned", trigger_field: null,
+    conditions: [],
+    actions: [
+      { type: "send_email", to: [{ kind: "ref", ref: "tester" }], cc: [], template_id: "tmpl-tester-assigned" },
+      { type: "notify", to: [{ kind: "ref", ref: "tester" }], message: "أُسند إليك اختبار {{code}}" },
+    ],
+    enabled: 1, run_count: 0, created_at: nowIso(),
+  },
+  {
+    id: "rule-tester-accepted", name: "قبول التيستر → إبلاغ مدخل البيانات والإدارة", trigger_type: "tester.accepted", trigger_field: null,
+    conditions: [],
+    actions: [
+      { type: "send_email", to: [{ kind: "ref", ref: "creator" }], cc: [{ kind: "ref", ref: "developer" }, { kind: "role", role: "admin" }], template_id: "tmpl-tester-accepted" },
+      { type: "notify", to: [{ kind: "ref", ref: "creator" }], message: "✅ {{actor_name}} وافق على تكليف {{code}}" },
+    ],
+    enabled: 1, run_count: 0, created_at: nowIso(),
+  },
+  {
+    id: "rule-tester-declined", name: "رفض التيستر → إبلاغ مدخل البيانات والإدارة بالسبب", trigger_type: "tester.declined", trigger_field: null,
+    conditions: [],
+    actions: [
+      { type: "send_email", to: [{ kind: "ref", ref: "creator" }], cc: [{ kind: "ref", ref: "developer" }, { kind: "role", role: "admin" }], template_id: "tmpl-tester-declined" },
+      { type: "notify", to: [{ kind: "ref", ref: "creator" }], message: "❌ {{actor_name}} رفض تكليف {{code}}: {{reason}}" },
+    ],
+    enabled: 1, run_count: 0, created_at: nowIso(),
+  },
+  {
+    id: "rule-dev-accepted", name: "قبول المطور → إبلاغ مدخل البيانات والإدارة", trigger_type: "developer.accepted", trigger_field: null,
+    conditions: [],
+    actions: [
+      { type: "send_email", to: [{ kind: "ref", ref: "creator" }], cc: [{ kind: "ref", ref: "tester" }, { kind: "role", role: "admin" }], template_id: "tmpl-dev-accepted" },
+      { type: "notify", to: [{ kind: "ref", ref: "creator" }], message: "✅ {{actor_name}} وافق على تكليف {{code}}" },
+    ],
+    enabled: 1, run_count: 0, created_at: nowIso(),
+  },
+  {
+    id: "rule-dev-declined", name: "رفض المطور → إبلاغ مدخل البيانات والإدارة بالسبب", trigger_type: "developer.declined", trigger_field: null,
+    conditions: [],
+    actions: [
+      { type: "send_email", to: [{ kind: "ref", ref: "creator" }], cc: [{ kind: "ref", ref: "tester" }, { kind: "role", role: "admin" }], template_id: "tmpl-dev-declined" },
+      { type: "notify", to: [{ kind: "ref", ref: "creator" }], message: "❌ {{actor_name}} رفض تكليف {{code}}: {{reason}}" },
+    ],
+    enabled: 1, run_count: 0, created_at: nowIso(),
+  },
+  {
+    id: "rule-urgent-withdrawal", name: "اعتذار عن الدعم الفوري → إبلاغ مدخل البيانات والإدارة", trigger_type: "urgent.withdrawal", trigger_field: null,
+    conditions: [],
+    actions: [
+      { type: "send_email", to: [{ kind: "ref", ref: "creator" }], cc: [{ kind: "role", role: "admin" }], template_id: "tmpl-urgent-withdrawal" },
+      { type: "notify", to: [{ kind: "ref", ref: "creator" }], message: "🙅 {{actor_name}} اعتذر عن {{code}}: {{reason}}" },
+    ],
+    enabled: 1, run_count: 0, created_at: nowIso(),
+  },
+  {
+    id: "rule-urgent-progress", name: "موقف الدعم الفوري (مازلت أعمل/انتهيت) → إبلاغ المعنيين", trigger_type: "urgent.progress", trigger_field: null,
+    conditions: [],
+    actions: [
+      { type: "send_email", to: [{ kind: "ref", ref: "creator" }], cc: [{ kind: "ref", ref: "ticket_parties" }, { kind: "role", role: "admin" }], template_id: "tmpl-urgent-progress" },
+      { type: "notify", to: [{ kind: "ref", ref: "creator" }], message: "{{progress_label}} — {{code}} بواسطة {{actor_name}}" },
+    ],
+    enabled: 1, run_count: 0, created_at: nowIso(),
+  },
+  {
+    id: "rule-rejected", name: "رفض الطلب نهائياً → إبلاغ المدخل والعميل بالسبب", trigger_type: "ticket.rejected", trigger_field: null,
+    conditions: [],
+    actions: [
+      { type: "send_email", to: [{ kind: "ref", ref: "creator" }, { kind: "ref", ref: "client" }], cc: [{ kind: "ref", ref: "tester" }, { kind: "ref", ref: "developer" }], template_id: "tmpl-rejected" },
+      { type: "notify", to: [{ kind: "ref", ref: "ticket_parties" }], message: "❌ {{code}} رُفض: {{reason}}" },
+    ],
+    enabled: 1, run_count: 0, created_at: nowIso(),
+  },
+  {
+    id: "rule-test-failed", name: "فشل الاختبار → إبلاغ المطور والمدخل بالسبب", trigger_type: "test.failed", trigger_field: null,
+    conditions: [],
+    actions: [
+      { type: "send_email", to: [{ kind: "ref", ref: "developer" }, { kind: "ref", ref: "creator" }], cc: [{ kind: "ref", ref: "tester" }], template_id: "tmpl-test-failed" },
+      { type: "notify", to: [{ kind: "ref", ref: "developer" }], message: "🧪 {{code}} فشل اختباره — عاد إليك بالسبب" },
+    ],
+    enabled: 1, run_count: 0, created_at: nowIso(),
+  },
+  {
+    id: "rule-delivered", name: "تم الإصلاح / التسليم → إبلاغ العميل والمدخل", trigger_type: "ticket.delivered", trigger_field: null,
+    conditions: [],
+    actions: [
+      { type: "send_email", to: [{ kind: "ref", ref: "client" }, { kind: "ref", ref: "creator" }], cc: [{ kind: "ref", ref: "tester" }, { kind: "ref", ref: "developer" }], template_id: "tmpl-delivered" },
+      { type: "notify", to: [{ kind: "ref", ref: "creator" }], message: "{{status_label}} — {{code}}" },
+    ],
+    enabled: 1, run_count: 0, created_at: nowIso(),
+  },
+  {
+    id: "rule-note-added", name: "ملاحظة/رد جديد → إبلاغ كل أطراف الطلب (عدا الكاتب)", trigger_type: "note.added", trigger_field: null,
+    conditions: [],
+    actions: [
+      { type: "send_email", to: [{ kind: "ref", ref: "ticket_parties" }], cc: [], template_id: "tmpl-note-added" },
+      { type: "notify", to: [{ kind: "ref", ref: "ticket_parties" }], message: "💬 {{actor_name}} على {{code}}: {{note}}" },
     ],
     enabled: 1, run_count: 0, created_at: nowIso(),
   },

@@ -6,7 +6,7 @@ import { sendMail } from "./email";
 import { renderBlocks, renderTemplate, templateVars, wrapEmail } from "./templates";
 import { ROLE_LABELS, STATUS_LABELS } from "./labels";
 import { DEFAULT_TEMPLATE_BLOCKS } from "./types";
-import type { DevStatus, RequestType, Role, Settings, Staff, Ticket, TicketKind, TicketPriority } from "./types";
+import type { AutomationContext, DevStatus, RequestType, Role, Settings, Staff, Ticket, TicketKind, TicketPriority } from "./types";
 import { escapeHtml, genTicketCode, isEmail, nowIso } from "./util";
 import { assignmentEmailActions } from "./assignment-links";
 
@@ -93,24 +93,17 @@ const EST_TEXT = (t: Ticket) =>
 const TRACK_ROW = (t: Ticket, s: Settings) =>
   `<p style="margin:14px 0 0"><a href="${s.base_url}/track?code=${t.code}" style="background:#1d4ed8;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none;font-weight:700">تتبع حالة الطلب ↗</a></p>`;
 
-// بريد تكليف التيستر له قالب واحد مركزي قابل للتعديل — لا تنشئ Rule إضافية لنفس التكليف حتى لا يتكرر
-async function sendTesterAssignmentEmail(ticket: Ticket, actorLabel: string, excludeStaffId: string | null = null) {
+// بريد تكليف التيستر يمر عبر قاعدة أتمتة «تكليف التيستر» + قالب «تكليف التيستر بطلب» —
+// أزرار القبول/الرفض الموقعة يُلحقها العامل تلقائياً عندما يكون قرار التيستر pending
+async function fireTesterAssignedEvent(ticket: Ticket, actorLabel: string, actorStaffId: string | null = null) {
   const repo = await getRepo();
-  const settings = await repo.settingsGet();
-  const tmpl = await repo.templateGet("tmpl-tester-assigned");
-  const vars = templateVars(ticket, settings);
-  const fallbackSubject = `🧪 أُسند إليك اختبار الطلب ${ticket.code}`;
-  const subject = tmpl ? renderTemplate(tmpl.subject, vars, { htmlEscape: false }) : fallbackSubject;
-  let bodyHtml = tmpl
-    ? renderBlocks(vars, { ...DEFAULT_TEMPLATE_BLOCKS, ...(tmpl.blocks ?? {}) }, renderTemplate(tmpl.body_html, vars))
-    : `<p>أُسند إليك اختبار طلب <b dir="ltr">${esc(ticket.code)}</b>${ticket.is_urgent ? " — <b style='color:#dc2626'>دعم فوري عاجل</b>" : ""}</p>
-       <p><b>العميل:</b> ${esc(ticket.client_name)}</p><p><b>التفاصيل:</b><br>${esc(ticket.details).replaceAll("\n", "<br>")}</p>`;
-  // أزرار القبول/الاعتذار داخل الإيميل نفسه — موقعة باسم التيستر ولا تحتاج تسجيل دخول
-  const tester = ticket.tester_id ? await repo.staffGet(ticket.tester_id) : null;
-  if (tester) bodyHtml += assignmentEmailActions(settings.base_url, ticket, "tester", tester);
-  await mailParties({
-    ticket, to: ["tester"], excludeStaffId, subject, bodyHtml,
-    notifyTo: ["tester"], notifyMessage: `أُسند إليك اختبار ${ticket.code}${ticket.is_urgent ? " 🚨" : ""}`,
+  const evt = await repo.eventAdd({
+    ticket_id: ticket.id, type: "ticket.assigned", actor_label: actorLabel,
+    old_values: null, new_values: { tester: ticket.tester_name },
+  });
+  await emit({
+    id: evt.id, type: "tester.assigned",
+    ctx: { ticket, old: null, actor_label: actorLabel, actor_staff_id: actorStaffId },
   });
 }
 
@@ -202,11 +195,7 @@ export async function createTicketOp(input: {
   await emit({ id: evt.id, type: "ticket.created", ctx: { ticket, old: null, actor_label: input.actor.label } });
 
   if (input.tester_id && tester_name) {
-    await repo.eventAdd({
-      ticket_id: ticket.id, type: "ticket.assigned", actor_label: input.actor.label,
-      old_values: null, new_values: { tester: tester_name },
-    });
-    await sendTesterAssignmentEmail(ticket, input.actor.label, input.actor.staff_id);
+    await fireTesterAssignedEvent(ticket, input.actor.label, input.actor.staff_id);
   }
   if (input.developer_id) {
     await assignDeveloperOp(ticket.id, input.developer_id, input.actor.label, undefined, input.actor.staff_id);
@@ -248,11 +237,7 @@ export async function assignTesterOp(
     old_values: { tester_id: old.tester_id, tester_name: old.tester_name },
     new_values: { tester_id: testerId, tester_name: ts.name, status: "pending" },
   });
-  await repo.eventAdd({
-    ticket_id: ticket.id, type: "ticket.assigned", actor_label: actorLabel,
-    old_values: { tester: old.tester_name }, new_values: { tester: ts.name },
-  });
-  await sendTesterAssignmentEmail(ticket, actorLabel);
+  await fireTesterAssignedEvent(ticket, actorLabel, assignedBy);
   return ticket;
 }
 
@@ -408,26 +393,18 @@ export async function respondToAssignmentOp(
     old_values: { assignment_status: assignment.status, assignee: actor.staff_id },
     new_values: { assignment_status: decision, reason: reason?.trim() || null },
   });
-  await repo.eventAdd({
+  const evt = await repo.eventAdd({
     ticket_id: ticket.id, type: "note.added", actor_label: actorLabel, old_values: null,
     new_values: { note: `${accepted ? "✅ وافق على" : "❌ رفض"} تكليف ${assignmentRole === "tester" ? "الاختبار" : "التطوير"}${reason ? ` — السبب: ${reason.trim()}` : ""}` },
   });
 
-  const admins = (await repo.staffList(true)).filter((s) => s.role === "admin").map((s) => s.email);
-  await mailParties({
-    ticket: updated,
-    to: ["creator"],
-    cc: assignmentRole === "tester" ? ["developer"] : ["tester"],
-    extraTo: admins,
-    excludeStaffId: actor.staff_id,
-    subject: `${accepted ? "✅ قبول" : "❌ رفض"} ${assignmentRole === "tester" ? "التيستر" : "المطور"} للتكليف ${ticket.code} — ${actor.name}`,
-    bodyHtml: `<p><b>${esc(actorLabel)}</b> ${accepted ? "وافق على" : "رفض"} التكليف بالطلب <b dir="ltr">${esc(ticket.code)}</b>.</p>
-      <p><b>العميل:</b> ${esc(ticket.client_name)}</p>
-      <p><b>العنوان:</b> ${esc(ticket.title || ticket.details.slice(0, 120))}</p>
-      ${reason ? `<p style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:12px"><b>السبب:</b><br>${esc(reason.trim())}</p>` : ""}
-      ${TRACK_ROW(updated, await repo.settingsGet())}`,
-    notifyTo: ["creator", ...(assignmentRole === "tester" ? (["developer"] as PartyRef[]) : (["tester"] as PartyRef[]))],
-    notifyMessage: `${accepted ? "✅" : "❌"} ${actor.name} ${accepted ? "وافق على" : "رفض"} ${ticket.code}`,
+  // الإيميل يمر عبر قاعدة الأتمتة المخصصة للحدث — تتحكم في مستلميها من صفحة الأتمتة
+  await emit({
+    id: evt.id, type: `${assignmentRole}.${decision}` as "tester.accepted",
+    ctx: {
+      ticket: updated, old: ticket, actor_label: actorLabel, actor_staff_id: actor.staff_id,
+      vars: { actor_name: actor.name, actor_role: ROLE_LABELS[actor.role], reason: reason?.trim() ?? "" },
+    },
   });
   return { ok: true };
 }
@@ -459,7 +436,7 @@ export async function declineAssignmentOp(
   const updated = await repo.ticketUpdate(ticketId, patch);
   if (!updated) return { ok: false, error: "تعذر التحديث" };
 
-  await repo.eventAdd({
+  const evt = await repo.eventAdd({
     ticket_id: ticketId, type: "note.added", actor_label: actorLabel,
     old_values: null, new_values: { note: `🙅 اعتذر عن الدعم الفوري — السبب: ${reason}` },
   });
@@ -470,37 +447,13 @@ export async function declineAssignmentOp(
     new_values: { reason, tester_id: updated.tester_id, developer_id: updated.developer_id },
   });
 
-  const admins = (await repo.staffList(true)).filter((s) => s.role === "admin");
-  const adminEmails = admins.map((a) => a.email).filter((e) => e && e.includes("@"));
-  // المستلم الرئيسي: مدخل البيانات. لو ضيف بلا بريد صالح → وجّه الرسالة نفسها للإدارة حتى لا تضيع
-  const creatorStaff = updated.created_by ? await repo.staffGet(updated.created_by) : null;
-  const creatorEmail = creatorStaff?.email && creatorStaff.email.includes("@") ? creatorStaff.email
-    : (!creatorStaff && isEmail(updated.client_contact ?? "") ? updated.client_contact : null);
-  const settings = await repo.settingsGet();
-  const tmpl = await repo.templateGet("tmpl-urgent-withdrawal");
-  const vars = {
-    ...templateVars(updated, settings),
-    actor_name: actor.name,
-    actor_role: ROLE_LABELS[actor.role],
-    reason,
-  };
-  const subject = tmpl
-    ? renderTemplate(tmpl.subject, vars, { htmlEscape: false })
-    : `🙅 اعتذار عن ${isTester ? "اختبار" : "تطوير"} الطلب ${t.code} — ${actor.name}`;
-  const bodyHtml = tmpl
-    ? renderBlocks(vars, { ...DEFAULT_TEMPLATE_BLOCKS, ...(tmpl.blocks ?? {}) }, renderTemplate(tmpl.body_html, vars))
-    : `<p><b>${esc(actorLabel)}</b> اعتذر عن مهمة <b dir="ltr">${esc(t.code)}</b> (دعم فوري 🚨)</p>
-       <p><b>السبب:</b> ${esc(reason)}</p><p><b>العميل:</b> ${esc(t.client_name)}</p>`;
-  await mailParties({
-    ticket: updated,
-    to: creatorEmail ? ["creator"] : [],
-    extraTo: creatorEmail ? adminEmails : [],
-    forceTo: creatorEmail ? undefined : adminEmails.slice(0, 5),
-    excludeStaffId: actor.staff_id,
-    subject,
-    bodyHtml,
-    notifyTo: ["creator"],
-    notifyMessage: `🙅 ${actor.name} اعتذر عن ${t.code}: ${reason.slice(0, 80)}`,
+  // الإيميل يمر عبر قاعدة «اعتذار عن الدعم الفوري» — مستلموها بيدك من صفحة الأتمتة
+  await emit({
+    id: evt.id, type: "urgent.withdrawal",
+    ctx: {
+      ticket: updated, old: t, actor_label: actorLabel, actor_staff_id: actor.staff_id,
+      vars: { actor_name: actor.name, actor_role: ROLE_LABELS[actor.role], reason },
+    },
   });
   return { ok: true };
 }
@@ -582,7 +535,7 @@ export async function updateUrgentProgressOp(
       ? "✅ انتهيت — انتهى الدعم الفوري لهذه النقطة وأُقفل الطلب رسمياً"
       : `✅ أنهى ${isTester ? "التيست" : "الديف"} جزءه — الطلب لا يُقفل رسمياً إلا بعد إنهاء ${waitingFor}`
     : "🔄 مازلت أعمل على هذه النقطة";
-  await repo.eventAdd({
+  const evt = await repo.eventAdd({
     ticket_id: ticketId, type: "note.added", actor_label: actorLabel,
     old_values: null,
     new_values: { note: `${progressText}${note?.trim() ? ` — ${note.trim()}` : ""}${done ? ` (المدة الفعلية: ${minutes} دقيقة تقريباً)` : ""}` },
@@ -594,46 +547,21 @@ export async function updateUrgentProgressOp(
     new_values: { progress, fully_closed: fullyClosed, note: note?.trim() || null, ...(done && fullyClosed ? { actual_minutes: minutes } : {}) },
   });
 
-  // بريد الموقف: قالب مركزي قابل للتعديل من صفحة القوالب
-  const settings = await repo.settingsGet();
-  const admins = (await repo.staffList(true)).filter((s) => s.role === "admin").map((s) => s.email).filter((e) => e && e.includes("@"));
-  const tmpl = await repo.templateGet("tmpl-urgent-progress");
-  const vars = {
-    ...templateVars(updated, settings),
-    actor_name: actor.name,
-    actor_role: ROLE_LABELS[actor.role],
-    progress_label: done
-      ? (fullyClosed ? "انتهى الدعم الفوري وأُقفل الطلب ✅" : `أنهى ${isTester ? "التيست" : "الديف"} جزءه — بانتظار ${waitingFor} للإقفال الرسمي ⏳`)
-      : "مازال العمل جارياً 🔄",
-    note: note?.trim() ?? "",
-    duration_minutes: done && fullyClosed ? String(minutes) : "",
-  };
-  const fallbackSubject = done
-    ? fullyClosed
-      ? `✅ انتهى الدعم الفوري ${t.code} وأُقفل الطلب — ${actor.name}`
-      : `⏳ ${actor.name} أنهى جزءه في ${t.code} — بانتظار ${waitingFor} للإقفال`
-    : `🔄 ${actor.name} مازال يعمل على الدعم الفوري ${t.code}`;
-  const subject = tmpl ? renderTemplate(tmpl.subject, vars, { htmlEscape: false }) : fallbackSubject;
-  const bodyHtml = tmpl
-    ? renderBlocks(vars, { ...DEFAULT_TEMPLATE_BLOCKS, ...(tmpl.blocks ?? {}) }, renderTemplate(tmpl.body_html, vars))
-    : `<p><b>${esc(actorLabel)}</b> حدّث موقف الدعم الفوري <b dir="ltr">${esc(t.code)}</b> (${esc(t.client_name)}):</p>
-       <p style="background:${done && fullyClosed ? "#f0fdf4;border:1px solid #bbf7d0" : "#eff6ff;border:1px solid #bfdbfe"};border-radius:8px;padding:12px">
-         <b>${done ? (fullyClosed ? "✅ انتهى الدعم الفوري وأُقفل الطلب رسمياً" : `⏳ أنهى ${isTester ? "التيست" : "الديف"} جزءه — الإقفال الرسمي بانتظار ${waitingFor}`) : "🔄 مازال العمل جارياً على هذه النقطة"}</b>
-         ${note?.trim() ? `<br>${esc(note.trim()).replaceAll("\n", "<br>")}` : ""}
-         ${done && fullyClosed ? `<br><span style="color:#64748b">المدة الفعلية: ${minutes} دقيقة تقريباً</span>` : ""}
-       </p>`;
-  await mailParties({
-    ticket: updated,
-    to: ["creator"],
-    cc: isTester ? ["developer"] : ["tester"],
-    extraTo: admins,
-    excludeStaffId: actor.staff_id,
-    subject,
-    bodyHtml,
-    notifyTo: ["creator"],
-    notifyMessage: done
-      ? fullyClosed ? `✅ ${actor.name} أنهى الدعم الفوري ${t.code} وأُقفل` : `⏳ ${actor.name} أنهى جزءه في ${t.code}`
-      : `🔄 ${actor.name} مازال يعمل على ${t.code}`,
+  // بريد الموقف يمر عبر قاعدة «موقف الدعم الفوري» — مستلموها وقالبها بيدك من صفحة الأتمتة
+  await emit({
+    id: evt.id, type: "urgent.progress",
+    ctx: {
+      ticket: updated, old: t, actor_label: actorLabel, actor_staff_id: actor.staff_id,
+      vars: {
+        actor_name: actor.name,
+        actor_role: ROLE_LABELS[actor.role],
+        progress_label: done
+          ? (fullyClosed ? "انتهى الدعم الفوري وأُقفل الطلب ✅" : `أنهى ${isTester ? "التيست" : "الديف"} جزءه — بانتظار ${waitingFor} للإقفال الرسمي ⏳`)
+          : "مازال العمل جارياً 🔄",
+        note: note?.trim() ?? "",
+        duration_minutes: done && fullyClosed ? String(minutes) : "",
+      },
+    },
   });
   return { ok: true };
 }
@@ -686,56 +614,41 @@ export async function changeStatusOp(
     });
   }
 
-  // إيميلات مخصوصة (قاعدة الأتمتة العامة تتخطى هذه الحالات)
-  const settings = await repo.settingsGet();
+  // الحالات المخصوصة تمر عبر قواعد أتمتة مستقلة — مستلمو كل إيميل بيدك من صفحة الأتمتة
+  // (قاعدة «تغير حالة التطوير» العامة تتخطى هذه الحالات منعاً للتكرار)
+  const specialVars = {
+    actor_name: actorLabel.split(" (")[0],
+    actor_role: actorLabel.includes("(") ? actorLabel.split(" (")[1].replace(")", "") : "",
+    reason: note?.trim() ?? "",
+  };
   if (newStatus === "rejected") {
-    await mailParties({
-      ticket, to: ["creator", "client"], cc: ["tester", "developer"],
-      subject: `❌ تم رفض الطلب ${ticket.code} — بواسطة ${actorLabel}`,
-      bodyHtml: `<p>تم رفض طلب <b dir="ltr">${esc(ticket.code)}</b> (العميل: ${esc(ticket.client_name)})</p>
-        <p><b>قام بالرفض:</b> ${esc(actorLabel)}</p>
-        <p style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:12px"><b>سبب الرفض:</b><br>${esc(note?.trim() || "—")}</p>
-        ${TRACK_ROW(ticket, settings)}`,
-      notifyTo: ["creator", "tester", "developer"],
-      notifyMessage: `❌ ${ticket.code} رُفض بواسطة ${actorLabel.split(" (")[0]}`,
+    await emit({
+      id: evt.id, type: "ticket.rejected",
+      ctx: { ticket, old, actor_label: actorLabel, vars: specialVars },
     });
   }
   if (newStatus === "test_failed") {
-    await mailParties({
-      ticket, to: ["developer", "creator"], cc: ["tester"],
-      subject: `🧪 فشل اختبار الطلب ${ticket.code} — عاد للمطور`,
-      bodyHtml: `<p>أعاد <b>${esc(actorLabel)}</b> الطلب <b dir="ltr">${esc(ticket.code)}</b> للمطور بعد فشل الاختبار (العميل: ${esc(ticket.client_name)})</p>
-        <p style="background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:12px"><b>سبب فشل الاختبار / المشكلة:</b><br>${esc(note?.trim() || "—")}</p>
-        ${TRACK_ROW(ticket, settings)}`,
-      notifyTo: ["developer", "creator"],
-      notifyMessage: `🧪 ${ticket.code} فشل اختبارها — عادت للمطور بالسبب`,
+    await emit({
+      id: evt.id, type: "test.failed",
+      ctx: { ticket, old, actor_label: actorLabel, vars: specialVars },
     });
   }
   if (newStatus === "fixed" || newStatus === "closed") {
-    const done = newStatus === "closed";
-    await mailParties({
-      ticket, to: ["client", "creator"], cc: ["tester", "developer"],
-      subject: done ? `✅ تم تسليم وإغلاق طلبك ${ticket.code}` : `🔧 تم إصلاح طلبك ${ticket.code} — جاهز للتسليم`,
-      bodyHtml: `<p>${done ? "يسعدنا إبلاغك بأنه <b>تم تسليم وإغلاق</b> طلبك" : "تم <b>إصلاح</b> طلبك وهو جاهز للتسليم ويُغلق بعد اعتماده"} <b dir="ltr">${esc(ticket.code)}</b></p>
-        <p><b>الحالة النهائية:</b> ${STATUS_LABELS[newStatus]}</p>
-        ${note?.trim() ? `<p style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:12px"><b>ملاحظات الفريق:</b><br>${esc(note.trim())}</p>` : ""}
-        <p><b>بواسطة:</b> ${esc(actorLabel)}</p>
-        ${EST_TEXT(ticket)}
-        ${TRACK_ROW(ticket, settings)}`,
-      notifyTo: ["creator"],
-      notifyMessage: `${done ? "✅" : "🔧"} ${ticket.code} — ${STATUS_LABELS[newStatus]} وأُرسل إيميل لمقدم الطلب`,
+    await emit({
+      id: evt.id, type: "ticket.delivered",
+      ctx: { ticket, old, actor_label: actorLabel, ...(note ? { note } : {}), vars: specialVars },
     });
   }
   return ticket;
 }
 
-// ═══ ملاحظات/ردود الطلب — تصل بالبريد لكل أطراف الطلب (عدا الكاتب) ═══
+// ═══ ملاحظات/ردود الطلب — تمر عبر قاعدة «ملاحظة/رد جديد» وتُستثنى كاتبها تلقائياً ═══
 export async function addNoteOp(
   ticketId: string, note: string, actorLabel: string,
   actorRole?: Role, actorStaffId?: string | null,
 ) {
   const repo = await getRepo();
-  await repo.eventAdd({
+  const evt = await repo.eventAdd({
     ticket_id: ticketId, type: "note.added", actor_label: actorLabel,
     old_values: null, new_values: { note },
   });
@@ -747,17 +660,13 @@ export async function addNoteOp(
   const t = await repo.ticketById(ticketId);
   if (!t) return;
 
-  // الملاحظة تُعرض لكل أطراف الطلب: مدخل البيانات ↔ التيست ↔ الديف — بكل إيميل
   const isStatus = actorRole === "developer" ? "ملاحظات الديف" : actorRole === "tester" ? "ملاحظات التيست" : "ملاحظة";
-  const settings = await repo.settingsGet();
-  await mailParties({
-    ticket: t, to: ["creator", "tester", "developer"], excludeStaffId: actorStaffId ?? null,
-    subject: `💬 ${isStatus} جديدة على ${t.code} — ${actorLabel}`,
-    bodyHtml: `<p>أضاف <b>${esc(actorLabel)}</b> ${isStatus} على الطلب <b dir="ltr">${esc(t.code)}</b> (العميل: ${esc(t.client_name)}):</p>
-      <p style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:12px">${esc(note).replaceAll("\n", "<br>")}</p>
-      <p style="color:#64748b">الحالة الحالية: ${STATUS_LABELS[t.dev_status]} — بتاريخ ${new Date().toLocaleString("ar-EG")}</p>
-      ${TRACK_ROW(t, settings)}`,
-    notifyTo: ["creator", "tester", "developer"],
-    notifyMessage: `💬 ${actorLabel.split(" (")[0]} على ${t.code}: ${note.slice(0, 70)}`,
+  await emit({
+    id: evt.id, type: "note.added",
+    ctx: {
+      ticket: t, old: null, actor_label: actorLabel, actor_staff_id: actorStaffId ?? null,
+      note,
+      vars: { actor_name: actorLabel.split(" (")[0], note_kind: isStatus },
+    } as AutomationContext & { note: string },
   });
 }

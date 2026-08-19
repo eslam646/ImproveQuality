@@ -171,7 +171,16 @@ export interface AuditEntry {
 
 export type TriggerType =
   | "ticket.created"
-  | "ticket.assigned"
+  | "ticket.assigned"        // إسناد المطور
+  | "tester.assigned"        // إسناد التيستر
+  | "tester.accepted" | "tester.declined"       // قرار التيستر
+  | "developer.accepted" | "developer.declined" // قرار الديف
+  | "urgent.withdrawal"      // اعتذار عن الدعم الفوري بعد القبول
+  | "urgent.progress"        // موقف الدعم الفوري: مازلت أعمل / انتهيت
+  | "ticket.rejected"        // رفض الطلب نهائياً (بسبب)
+  | "test.failed"            // فشل الاختبار (بسبب)
+  | "ticket.delivered"       // تم الإصلاح أو التسليم والإغلاق
+  | "note.added"             // ملاحظة / رد جديد
   | "field.changed"
   | "schedule.stale";
 
@@ -519,4 +528,6 @@ export interface AutomationContext {
   ticket: Ticket;
   old?: Partial<Ticket> | null;
   actor_label: string;
+  actor_staff_id?: string | null;        // من قام بالفعل — يُستثنى من الإيميلات تلقائياً
+  vars?: Record<string, string> | null;  // متغيرات إضافية للقالب: actor_name, reason, progress_label...
 }
