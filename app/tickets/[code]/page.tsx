@@ -72,12 +72,13 @@ export default async function TicketDetailsPage({
   const testers = staffAll.filter((s) => s.role === "tester");
   const devs = staffAll.filter((s) => s.role === "developer");
 
-  const [events, attachments, emailLog, auditEntries, meetings] = await Promise.all([
+  const [events, attachments, emailLog, auditEntries, meetings, assignments] = await Promise.all([
     repo.eventList(ticket.id),
     repo.attachmentList(ticket.id),
     perms.emails ? repo.emailLogList(1, 10, ticket.id) : Promise.resolve({ rows: [], total: 0 }),
     perms.view_audit ? repo.auditList("ticket", ticket.id) : Promise.resolve([]),
     (perms.manage_meetings || perms.join_meetings) ? repo.meetingList(ticket.id) : Promise.resolve([]),
+    ticket.is_urgent ? repo.assignmentList(ticket.id) : Promise.resolve([]),
   ]);
 
   const isAssignedTester = ticket.tester_id === actor.id;
@@ -86,9 +87,14 @@ export default async function TicketDetailsPage({
     ? (ticket.tester_assignment_status ?? "unassigned")
     : isAssignedDev ? (ticket.developer_assignment_status ?? "unassigned") : null;
   const needsAssignmentResponse = perms.assignment_decision && (isAssignedTester || isAssignedDev) && ["pending", "unassigned", "reassigned"].includes(myAssignmentStatus ?? "");
-  const canAssignTester = perms.assign_tester;
-  const canAssignDev = perms.assign_developer;
-  const canEstimate = perms.set_estimation;
+  // الدعم الفوري: الإسناد يظهر فقط عندما تكون الخانة شاغرة فعلاً (لا أحد مسند أو اعتذر) وقبل الإقفال —
+  // بعد ما يخلص أحد الطرفين أو أثناء شغله لا معنى لإعادة الإسناد ولا يظهر النموذج
+  const urgentNeedsTester = !!ticket.is_urgent && !ticket.urgent_ended_at && !ticket.tester_id;
+  const urgentNeedsDev = !!ticket.is_urgent && !ticket.urgent_ended_at && !ticket.developer_id;
+  const canAssignTester = perms.assign_tester && (!ticket.is_urgent || urgentNeedsTester);
+  const canAssignDev = perms.assign_developer && (!ticket.is_urgent || urgentNeedsDev);
+  // الدعم الفوري بلا استيميشن إطلاقاً — يُقاس بالوقت الفعلي المستخدم لكل شخص
+  const canEstimate = perms.set_estimation && !ticket.is_urgent;
   const canUpload = perms.upload_attachment && (perms.view_all_tickets || isAssignedTester || isAssignedDev);
   const acceptedForRole = actor.role === "tester" ? ticket.tester_assignment_status === "accepted" : actor.role === "developer" ? ticket.developer_assignment_status === "accepted" : true;
   // الدعم الفوري «طلب جانبي»: لا حالة تطوير له إطلاقاً — حالته من دورة حياته فقط (قبول/اعتذار/جاري/انتهى)
@@ -104,6 +110,33 @@ export default async function TicketDetailsPage({
     && (actor.role === "admin" || ((isAssignedTester || isAssignedDev) && myAssignmentStatus === "accepted"));
   const myPartDone = (isAssignedTester && ticket.tester_assignment_status === "completed")
     || (isAssignedDev && ticket.developer_assignment_status === "completed");
+
+  // الدعم الفوري: الوقت الفعلي المستخدم لكل شخص — من قبول التكليف حتى الإنهاء (أو حتى الآن إن كان يعمل)
+  const fmtMinutes = (mins: number) => {
+    if (mins < 1) return "أقل من دقيقة";
+    if (mins < 60) return `${Math.round(mins)} دقيقة`;
+    const h = Math.floor(mins / 60); const m = Math.round(mins % 60);
+    if (h < 24) return `${h} س${m ? ` ${m} د` : ""}`;
+    const d = Math.floor(h / 24);
+    return `${d} يوم${h % 24 ? ` ${h % 24} س` : ""}`;
+  };
+  const staffNameOf = (id: string | null) => staffAll.find((s) => s.id === id)?.name ?? "—";
+  const urgentTimeUsage = ticket.is_urgent
+    ? assignments
+        .filter((a) => a.responded_at && a.status !== "declined" && a.status !== "reassigned")
+        .map((a) => {
+          const start = Date.parse(a.responded_at!);
+          const end = a.completed_at ? Date.parse(a.completed_at) : (ticket.urgent_ended_at ? Date.parse(ticket.urgent_ended_at) : Date.now());
+          return {
+            id: a.id,
+            name: staffNameOf(a.staff_id),
+            role: a.assignment_role === "tester" ? "التيست" : "الديف",
+            minutes: Math.max(0, (end - start) / 60000),
+            done: !!a.completed_at,
+          };
+        })
+        .filter((x) => x.minutes > 0 || x.done)
+    : [];
   const hasActions = canAssignTester || canAssignDev || canEstimate || canNote || isAssignedTester || isAssignedDev || transitions.length > 0 || canUpdateUrgentProgress;
 
   return (
@@ -144,20 +177,22 @@ export default async function TicketDetailsPage({
               <div><dt className="text-slate-400">مدخل البيانات</dt><dd>{ticket.created_by_name}</dd></div>
               <div><dt className="text-slate-400">المختبِر (التيست)</dt><dd className="font-semibold text-purple-700">{ticket.tester_name ?? "لم يُحدد بعد"}<span className="block text-xs text-slate-400">{ASSIGNMENT_STATUS_LABELS[ticket.tester_assignment_status ?? "unassigned"]}</span></dd></div>
               <div><dt className="text-slate-400">المطور</dt><dd className="font-semibold">{ticket.developer_name ?? "غير معيّن"}<span className="block text-xs text-slate-400">{ASSIGNMENT_STATUS_LABELS[ticket.developer_assignment_status ?? "unassigned"]}</span></dd></div>
-              <div>
-                <dt className="text-slate-400">⏱️ تقدير التنفيذ الإجمالي (ديف + تيست)</dt>
-                <dd className="font-semibold">
-                  {(ticket.est_days || ticket.est_hours)
-                    ? `${ticket.est_days ? `${ticket.est_days} يوم` : ""}${ticket.est_days && ticket.est_hours ? " + " : ""}${ticket.est_hours ? `${ticket.est_hours} ساعة` : ""}`
-                    : "—"}
-                  {(ticket.dev_est_days || ticket.dev_est_hours || ticket.test_est_days || ticket.test_est_hours) && (
-                    <span className="block text-xs font-normal text-slate-400">
-                      ديف: {(ticket.dev_est_days || ticket.dev_est_hours) ? `${ticket.dev_est_days ? `${ticket.dev_est_days} يوم` : ""}${ticket.dev_est_days && ticket.dev_est_hours ? " + " : ""}${ticket.dev_est_hours ? `${ticket.dev_est_hours} ساعة` : ""}` : "—"}
-                      {" · "}تيست: {(ticket.test_est_days || ticket.test_est_hours) ? `${ticket.test_est_days ? `${ticket.test_est_days} يوم` : ""}${ticket.test_est_days && ticket.test_est_hours ? " + " : ""}${ticket.test_est_hours ? `${ticket.test_est_hours} ساعة` : ""}` : "—"}
-                    </span>
-                  )}
-                </dd>
-              </div>
+              {!ticket.is_urgent && (
+                <div>
+                  <dt className="text-slate-400">⏱️ تقدير التنفيذ الإجمالي (ديف + تيست)</dt>
+                  <dd className="font-semibold">
+                    {(ticket.est_days || ticket.est_hours)
+                      ? `${ticket.est_days ? `${ticket.est_days} يوم` : ""}${ticket.est_days && ticket.est_hours ? " + " : ""}${ticket.est_hours ? `${ticket.est_hours} ساعة` : ""}`
+                      : "—"}
+                    {(ticket.dev_est_days || ticket.dev_est_hours || ticket.test_est_days || ticket.test_est_hours) && (
+                      <span className="block text-xs font-normal text-slate-400">
+                        ديف: {(ticket.dev_est_days || ticket.dev_est_hours) ? `${ticket.dev_est_days ? `${ticket.dev_est_days} يوم` : ""}${ticket.dev_est_days && ticket.dev_est_hours ? " + " : ""}${ticket.dev_est_hours ? `${ticket.dev_est_hours} ساعة` : ""}` : "—"}
+                        {" · "}تيست: {(ticket.test_est_days || ticket.test_est_hours) ? `${ticket.test_est_days ? `${ticket.test_est_days} يوم` : ""}${ticket.test_est_days && ticket.test_est_hours ? " + " : ""}${ticket.test_est_hours ? `${ticket.test_est_hours} ساعة` : ""}` : "—"}
+                      </span>
+                    )}
+                  </dd>
+                </div>
+              )}
               <div><dt className="text-slate-400">المصدر</dt><dd>{ticket.source === "web_guest" ? "نموذج عام (ضيف)" : ticket.source === "update_form" ? "نموذج تحديث" : "داخلي"}</dd></div>
               <div><dt className="text-slate-400">تاريخ الإنشاء</dt><dd>{fmtDate(ticket.created_at)}</dd></div>
               <div><dt className="text-slate-400">آخر تحديث للحالة</dt><dd>{fmtDate(ticket.last_status_change)}</dd></div>
@@ -181,6 +216,21 @@ export default async function TicketDetailsPage({
                     <div><dt className="text-slate-400">المدة الفعلية</dt><dd className="font-semibold">{ticket.actual_minutes >= 60 ? `${Math.floor(ticket.actual_minutes / 60)} س ${ticket.actual_minutes % 60} د` : `${ticket.actual_minutes} دقيقة`} تقريباً</dd></div>
                   )}
                 </dl>
+                {urgentTimeUsage.length > 0 && (
+                  <div className="mt-3 rounded-lg border border-slate-200 bg-white p-3">
+                    <p className="text-xs font-bold text-slate-400">⏱️ الوقت المستخدم لكل شخص (من قبول التكليف حتى الإنهاء)</p>
+                    <ul className="mt-2 space-y-1">
+                      {urgentTimeUsage.map((u) => (
+                        <li key={u.id} className="flex items-center justify-between text-sm">
+                          <span><b>{u.name}</b> <span className="text-xs text-slate-400">({u.role})</span></span>
+                          <span className={`font-bold ${u.done ? "text-emerald-700" : "text-blue-700"}`}>
+                            {fmtMinutes(u.minutes)} {u.done ? "✓ أنهى" : "· مازال يعمل"}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
                 {ticket.urgent_result && (
                   <div className="mt-3 rounded-lg border border-emerald-200 bg-white p-3">
                     <p className="text-xs font-bold text-slate-400">نتيجة الدعم</p>
@@ -282,18 +332,20 @@ export default async function TicketDetailsPage({
                         {testers.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
                       </select>
                     </Field>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="text-xs font-semibold text-purple-700">تقدير التيست:</span>
-                      <input name="est_days" type="number" min="0" step="0.5" placeholder="أيام" className={`${inputCls} w-28`} defaultValue={ticket.test_est_days ?? ""} />
-                      <input name="est_hours" type="number" min="0" step="1" placeholder="أو ساعات" className={`${inputCls} w-28`} defaultValue={ticket.test_est_hours ?? ""} />
-                      <span className="text-xs text-slate-400">يُجمع مع تقدير الديف في الإجمالي تلقائياً</span>
-                    </div>
+                    {!ticket.is_urgent && (
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-xs font-semibold text-purple-700">تقدير التيست:</span>
+                        <input name="est_days" type="number" min="0" step="0.5" placeholder="أيام" className={`${inputCls} w-28`} defaultValue={ticket.test_est_days ?? ""} />
+                        <input name="est_hours" type="number" min="0" step="1" placeholder="أو ساعات" className={`${inputCls} w-28`} defaultValue={ticket.test_est_hours ?? ""} />
+                        <span className="text-xs text-slate-400">يُجمع مع تقدير الديف في الإجمالي تلقائياً</span>
+                      </div>
+                    )}
                     <Button type="submit">إسناد التيست 🧪</Button>
                   </form>
                 )}
 
                 {canAssignDev && (
-                  ticket.tester_id ? (
+                  (ticket.tester_id || ticket.is_urgent) ? (
                     <form action={assignDeveloperAction} className="space-y-2 rounded-xl border border-blue-100 bg-blue-50/40 p-3">
                       <input type="hidden" name="code" value={ticket.code} />
                       <Field label="2) إسناد / إعادة إسناد المطوّر" hint={`يُرسل إيميل للمطور + نسخة لمدخل البيانات — ${canAssignTester ? "لديك صلاحية إسناد المطور" : "سلّمها للمطور المناسب"}`}>
@@ -302,12 +354,14 @@ export default async function TicketDetailsPage({
                           {devs.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
                         </select>
                       </Field>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="text-xs font-semibold text-blue-700">تقدير الديف:</span>
-                        <input name="est_days" type="number" min="0" step="0.5" placeholder="أيام" className={`${inputCls} w-28`} defaultValue={ticket.dev_est_days ?? ""} />
-                        <input name="est_hours" type="number" min="0" step="1" placeholder="أو ساعات" className={`${inputCls} w-28`} defaultValue={ticket.dev_est_hours ?? ""} />
-                        <span className="text-xs text-slate-400">يُجمع مع تقدير التيست في الإجمالي تلقائياً</span>
-                      </div>
+                      {!ticket.is_urgent && (
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="text-xs font-semibold text-blue-700">تقدير الديف:</span>
+                          <input name="est_days" type="number" min="0" step="0.5" placeholder="أيام" className={`${inputCls} w-28`} defaultValue={ticket.dev_est_days ?? ""} />
+                          <input name="est_hours" type="number" min="0" step="1" placeholder="أو ساعات" className={`${inputCls} w-28`} defaultValue={ticket.dev_est_hours ?? ""} />
+                          <span className="text-xs text-slate-400">يُجمع مع تقدير التيست في الإجمالي تلقائياً</span>
+                        </div>
+                      )}
                       <Button type="submit">إسناد المطور 👨‍💻</Button>
                     </form>
                   ) : (

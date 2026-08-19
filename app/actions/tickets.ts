@@ -201,6 +201,11 @@ export async function assignTesterAction(formData: FormData) {
   const testerId = String(formData.get("tester_id") ?? "");
   const repo = await getRepo();
   const t = await repo.ticketByCode(code);
+  // الدعم الفوري: إعادة الإسناد فقط عندما تكون الخانة شاغرة (اعتذار/رفض) — لا تبديل أثناء العمل أو بعد الإقفال
+  if (t?.is_urgent) {
+    if (t.urgent_ended_at) redirect(`/tickets/${code}?err=${enc("الدعم الفوري أُقفل — لا إسناد بعد الإقفال")}`);
+    if (t.tester_id) redirect(`/tickets/${code}?err=${enc("التيست الحالي مازال مكلفاً — الإسناد الجديد يُتاح فقط بعد اعتذاره أو رفضه")}`);
+  }
   try {
     if (t && testerId) await assignTesterOp(t.id, testerId, labelOf(actor), estFromForm(formData), actor.id);
   } catch (e) {
@@ -219,8 +224,14 @@ export async function assignDeveloperAction(formData: FormData) {
   const t = await repo.ticketByCode(code);
   if (!t) redirect("/dashboard");
 
-  // القاعدة الذهبية: لا مطوّر قبل المختبِر أولاً
-  if (!t.tester_id) {
+  // الدعم الفوري: إعادة إسناد الديف فقط عندما تكون الخانة شاغرة — لا تبديل أثناء العمل أو بعد الإقفال
+  if (t.is_urgent) {
+    if (t.urgent_ended_at) redirect(`/tickets/${code}?err=${enc("الدعم الفوري أُقفل — لا إسناد بعد الإقفال")}`);
+    if (t.developer_id) redirect(`/tickets/${code}?err=${enc("الديف الحالي مازال مكلفاً — الإسناد الجديد يُتاح فقط بعد اعتذاره أو رفضه")}`);
+  }
+
+  // القاعدة الذهبية: لا مطوّر قبل المختبِر أولاً (للطلبات العادية)
+  if (!t.is_urgent && !t.tester_id) {
     redirect(`/tickets/${code}?err=${enc("حدّد فريق الاختبار أولاً — لا يُسنَد المطوّر إلا بعد التيست")}`);
   }
   try {
@@ -304,6 +315,9 @@ export async function setEstimationAction(formData: FormData) {
   const code = String(formData.get("code") ?? "");
   const repo = await getRepo();
   const t = await repo.ticketByCode(code);
+  if (t?.is_urgent) {
+    redirect(`/tickets/${code}?err=${enc("الدعم الفوري بلا تقدير زمني — يُقاس بالوقت الفعلي المستخدم لكل شخص تلقائياً")}`);
+  }
   const num = (k: string) => { const v = parseFloat(String(formData.get(k) ?? "")); return Number.isFinite(v) && v >= 0 ? v : null; };
   const dev = { days: num("dev_est_days"), hours: num("dev_est_hours") };
   const test = { days: num("test_est_days"), hours: num("test_est_hours") };
