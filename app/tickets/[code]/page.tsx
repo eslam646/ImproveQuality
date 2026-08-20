@@ -332,14 +332,6 @@ export default async function TicketDetailsPage({
                         {testers.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
                       </select>
                     </Field>
-                    {!ticket.is_urgent && (
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="text-xs font-semibold text-purple-700">تقدير التيست:</span>
-                        <input name="est_days" type="number" min="0" step="0.5" placeholder="أيام" className={`${inputCls} w-28`} defaultValue={ticket.test_est_days ?? ""} />
-                        <input name="est_hours" type="number" min="0" step="1" placeholder="أو ساعات" className={`${inputCls} w-28`} defaultValue={ticket.test_est_hours ?? ""} />
-                        <span className="text-xs text-slate-400">يُجمع مع تقدير الديف في الإجمالي تلقائياً</span>
-                      </div>
-                    )}
                     <Button type="submit">إسناد التيست 🧪</Button>
                   </form>
                 )}
@@ -354,14 +346,6 @@ export default async function TicketDetailsPage({
                           {devs.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
                         </select>
                       </Field>
-                      {!ticket.is_urgent && (
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="text-xs font-semibold text-blue-700">تقدير الديف:</span>
-                          <input name="est_days" type="number" min="0" step="0.5" placeholder="أيام" className={`${inputCls} w-28`} defaultValue={ticket.dev_est_days ?? ""} />
-                          <input name="est_hours" type="number" min="0" step="1" placeholder="أو ساعات" className={`${inputCls} w-28`} defaultValue={ticket.dev_est_hours ?? ""} />
-                          <span className="text-xs text-slate-400">يُجمع مع تقدير التيست في الإجمالي تلقائياً</span>
-                        </div>
-                      )}
                       <Button type="submit">إسناد المطور 👨‍💻</Button>
                     </form>
                   ) : (
