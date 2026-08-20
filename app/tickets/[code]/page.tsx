@@ -57,10 +57,14 @@ export default async function TicketDetailsPage({
   const ticket = await repo.ticketByCode(code);
   if (!ticket) notFound();
 
-  // نطاق الرؤية ديناميكي من الإعدادات + الاستثناء الفردي
+  // نطاق الرؤية ديناميكي من الإعدادات + الاستثناء الفردي — المتخصص المسند (باك/فرونت/UX) يرى طلبه أيضاً
+  const mySpecialistRoles = !ticket.is_urgent
+    ? (await repo.specialistList(ticket.id)).filter((x) => x.staff_id === actor.id && x.status !== "declined")
+    : [];
   if (!perms.view_all_tickets) {
     const ownCreated = perms.view_own_created && ticket.created_by === actor.id;
-    const assigned = perms.view_assigned_tickets && (ticket.tester_id === actor.id || ticket.developer_id === actor.id);
+    const assigned = perms.view_assigned_tickets
+      && (ticket.tester_id === actor.id || ticket.developer_id === actor.id || mySpecialistRoles.length > 0);
     if (!ownCreated && !assigned) redirect("/dashboard?denied=ticket");
   }
 
@@ -97,14 +101,14 @@ export default async function TicketDetailsPage({
   const canAssignDev = perms.assign_developer && (!ticket.is_urgent || urgentNeedsDev);
   // الدعم الفوري بلا استيميشن إطلاقاً — يُقاس بالوقت الفعلي المستخدم لكل شخص
   const canEstimate = perms.set_estimation && !ticket.is_urgent;
-  const canUpload = perms.upload_attachment && (perms.view_all_tickets || isAssignedTester || isAssignedDev);
+  const canUpload = perms.upload_attachment && (perms.view_all_tickets || isAssignedTester || isAssignedDev || mySpecialistRoles.length > 0);
   const acceptedForRole = actor.role === "tester" ? ticket.tester_assignment_status === "accepted" : actor.role === "developer" ? ticket.developer_assignment_status === "accepted" : true;
   // الدعم الفوري «طلب جانبي»: لا حالة تطوير له إطلاقاً — حالته من دورة حياته فقط (قبول/اعتذار/جاري/انتهى)
   const transitions = ticket.is_urgent || !perms.change_status || !acceptedForRole
     ? []
     : actor.role === "support" ? ALL_STATUSES.filter((s) => s !== ticket.dev_status) : allowedTransitions(actor.role, ticket.dev_status);
   const noteLabel = actor.role === "developer" ? "ملاحظات الديف" : actor.role === "tester" ? "ملاحظات التيست" : "ملاحظة مدخل البيانات";
-  const canNote = perms.add_note && (perms.view_all_tickets || ticket.created_by === actor.id || isAssignedTester || isAssignedDev);
+  const canNote = perms.add_note && (perms.view_all_tickets || ticket.created_by === actor.id || isAssignedTester || isAssignedDev || mySpecialistRoles.length > 0);
   // الدعم الفوري «طلب جانبي»: المكلَّف الذي قَبِل يحدّث موقفه (مازلت أعمل / انتهيت) — والأدمن يقدر أيضاً (يُسجل باسمه)
   // من أنهى جزءه (completed) لا يظهر له النموذج مرة أخرى — لا رجوع بعد الإنهاء
   const urgentEnded = !!ticket.urgent_ended_at;
@@ -139,7 +143,7 @@ export default async function TicketDetailsPage({
         })
         .filter((x) => x.minutes > 0 || x.done)
     : [];
-  const hasActions = canAssignTester || canAssignDev || canEstimate || canNote || isAssignedTester || isAssignedDev || transitions.length > 0 || canUpdateUrgentProgress;
+  const hasActions = canAssignTester || canAssignDev || canEstimate || canNote || isAssignedTester || isAssignedDev || transitions.length > 0 || canUpdateUrgentProgress || mySpecialistRoles.length > 0;
 
   return (
     <div className="mx-auto max-w-5xl space-y-5">

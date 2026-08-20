@@ -280,9 +280,13 @@ export async function createSupabaseRepo(): Promise<Repo> {
       if (f.ticket_kind) q = q.eq("ticket_kind", f.ticket_kind);
       if (f.source) q = q.eq("source", f.source);
       if (f.involvesStaffId) {
-        // يخصّني: منشئ/مطور/مختبِر — أو تذكرة جديدة لم تُسند بعد (تظهر لمدخل البيانات لتوجيهها)
+        // يخصّني: منشئ/مطور/مختبِر/متخصص (باك-فرونت-UX) — أو تذكرة جديدة لم تُسند بعد
         const id = f.involvesStaffId;
-        q = q.or(`created_by.eq.${id},developer_id.eq.${id},tester_id.eq.${id},and(tester_id.is.null,developer_id.is.null)`);
+        const { data: specRows } = await sb.from("ticket_specialists").select("ticket_id").eq("staff_id", id).eq("is_current", true);
+        const specIds = [...new Set((specRows ?? []).map((r) => (r as { ticket_id: string }).ticket_id))];
+        const orParts = [`created_by.eq.${id}`, `developer_id.eq.${id}`, `tester_id.eq.${id}`, `and(tester_id.is.null,developer_id.is.null)`];
+        if (specIds.length) orParts.push(`id.in.(${specIds.join(",")})`);
+        q = q.or(orParts.join(","));
       }
       if (f.staleOlderThanHours) {
         const cutoff = new Date(Date.now() - f.staleOlderThanHours * 3600000).toISOString();

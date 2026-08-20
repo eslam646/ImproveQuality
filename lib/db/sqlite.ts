@@ -479,8 +479,9 @@ export function createSqliteRepo(): Repo {
       if (f.ticket_kind) { where.push("ticket_kind=?"); args.push(f.ticket_kind); }
       if (f.source) { where.push("source=?"); args.push(f.source); }
       if (f.involvesStaffId) {
-        where.push("(created_by=? OR developer_id=? OR tester_id=? OR (tester_id IS NULL AND developer_id IS NULL))");
-        args.push(f.involvesStaffId, f.involvesStaffId, f.involvesStaffId);
+        // يخصّني: منشئ/مطور/مختبِر/متخصص (باك-فرونت-UX) — أو تذكرة جديدة لم تُسند بعد
+        where.push("(created_by=? OR developer_id=? OR tester_id=? OR id IN (SELECT ticket_id FROM ticket_specialists WHERE staff_id=? AND is_current=1) OR (tester_id IS NULL AND developer_id IS NULL))");
+        args.push(f.involvesStaffId, f.involvesStaffId, f.involvesStaffId, f.involvesStaffId);
       }
       if (f.staleOlderThanHours) {
         const cutoff = new Date(Date.now() - f.staleOlderThanHours * 3600000).toISOString();

@@ -24,7 +24,10 @@ export async function POST(req: Request) {
   const actor = await currentStaff();
   const initialGuestWindow = ticket.source === "web_guest" && Date.now() - new Date(ticket.created_at).getTime() <= 15 * 60_000;
   const perms = actor ? await permissionsForStaff(actor) : null;
-  const related = actor ? perms?.view_all_tickets || ticket.created_by === actor.id || ticket.tester_id === actor.id || ticket.developer_id === actor.id : false;
+  const isSpecialist = actor && !ticket.is_urgent
+    ? (await repo.specialistList(ticket.id)).some((x) => x.staff_id === actor.id && x.status !== "declined")
+    : false;
+  const related = actor ? perms?.view_all_tickets || ticket.created_by === actor.id || ticket.tester_id === actor.id || ticket.developer_id === actor.id || isSpecialist : false;
   const allowed = actor ? !!perms?.upload_attachment && !!related : initialGuestWindow;
   if (!allowed) {
     return NextResponse.json({ error: "رفع المرفقات غير مسموح: للأدمن أو المسؤول المسند فقط، أو أثناء إنشاء الطلب العام" }, { status: 403 });
