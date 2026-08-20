@@ -66,7 +66,7 @@ export const SEED_TEMPLATES: EmailTemplate[] = [
   {
     id: "tmpl-tester-assigned", name: "تكليف التيستر بطلب",
     subject: "🧪 أُسند إليك اختبار الطلب {{code}} — {{ticket.title}}",
-    body_html: `مرحباً {{ticket.tester_name}}، تم إسناد الطلب التالي إليك للمراجعة والاختبار. وافق على التكليف أو ارفضه بسبب واضح من صفحة الطلب.`,
+    body_html: `مرحباً {{ticket.tester_name}}، تم إسناد الطلب التالي إليك للمراجعة والاختبار. افتح الطلب من الزر بالأسفل ثم وافق على التكليف أو ارفضه بسبب واضح.`,
     blocks: { ...DEFAULT_TEMPLATE_BLOCKS, status: true, note: false, update_button: false },
     created_at: nowIso(), updated_at: nowIso(),
   },
@@ -172,14 +172,14 @@ export const SEED_TEMPLATES: EmailTemplate[] = [
   {
     id: "tmpl-assignment-revoked", name: "سحب التكليف — أُعيد الإسناد لشخص آخر",
     subject: "↩️ سُحب تكليفك بالطلب {{code}} — أُسند إلى {{new_assignee}}",
-    body_html: `مرحباً <b>{{previous_assignee}}</b>،<br>تم <b>سحب تكليفك</b> ({{assignment_role_label}}) بالطلب أدناه وأُعيد إسناده إلى <b>{{new_assignee}}</b> بواسطة {{actor_name}}.<br>لا يلزمك أي إجراء — أزرار القبول/الرفض في الإيميلات السابقة لم تعد صالحة.`,
+    body_html: `مرحباً <b>{{previous_assignee}}</b>،<br>تم <b>سحب تكليفك</b> ({{assignment_role_label}}) بالطلب أدناه وأُعيد إسناده إلى <b>{{new_assignee}}</b> بواسطة {{actor_name}}.<br>لا يلزمك أي إجراء — هذا الطلب لم يعد ضمن مهامك.`,
     blocks: { ...DEFAULT_TEMPLATE_BLOCKS, details: false, note: false, update_button: false, track_button: false },
     created_at: nowIso(), updated_at: nowIso(),
   },
   {
     id: "tmpl-spec-assigned", name: "تكليف متخصص (باك/فرونت/UX)",
     subject: "🧩 أُسند إليك جزء «{{spec_label}}» في الطلب {{code}}",
-    body_html: `مرحباً <b>{{specialist_name}}</b>، تم إسنادك متخصصاً لجزء <b>{{spec_label}}</b> في الطلب أدناه. افتح الطلب واقبل التكليف أو ارفضه بسبب — قبولك يبدأ عدّاد تقديرك.`,
+    body_html: `مرحباً <b>{{specialist_name}}</b>، تم إسنادك متخصصاً لجزء <b>{{spec_label}}</b> في الطلب أدناه. افتح الطلب من الزر بالأسفل واقبل التكليف أو ارفضه بسبب — قبولك يبدأ عدّاد تقديرك.`,
     blocks: { ...DEFAULT_TEMPLATE_BLOCKS, note: false, update_button: false },
     created_at: nowIso(), updated_at: nowIso(),
   },
@@ -251,7 +251,7 @@ export const SEED_RULES: AutomationRule[] = [
   },
   // ═══ قواعد الأحداث المفصولة — كل إيميل له قاعدة مستقلة تتحكم في مستلميها بالكامل ═══
   {
-    id: "rule-tester-assigned", name: "تكليف التيستر → إيميل التكليف بأزرار القبول/الرفض", trigger_type: "tester.assigned", trigger_field: null,
+    id: "rule-tester-assigned", name: "تكليف التيستر → إيميل التكليف", trigger_type: "tester.assigned", trigger_field: null,
     conditions: [],
     actions: [
       { type: "send_email", to: [{ kind: "ref", ref: "tester" }], cc: [], template_id: "tmpl-tester-assigned" },

@@ -8,7 +8,6 @@ import { ROLE_LABELS, STATUS_LABELS } from "./labels";
 import { DEFAULT_TEMPLATE_BLOCKS } from "./types";
 import type { AutomationContext, DevStatus, RequestType, Role, Settings, Staff, Ticket, TicketKind, TicketPriority } from "./types";
 import { escapeHtml, genTicketCode, isEmail, nowIso } from "./util";
-import { assignmentEmailActions } from "./assignment-links";
 
 // ═══ بريد الأطراف المباشر: إيميل + تسجيل + إشعار داخلي ═══
 type PartyRef = "creator" | "tester" | "developer" | "client";

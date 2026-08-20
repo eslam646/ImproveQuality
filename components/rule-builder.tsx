@@ -143,7 +143,7 @@ export function RuleBuilder({ initial, templates, staff }: {
         <div className="grid gap-2">
           {([
             { v: "ticket.created", l: "🆕 عند إنشاء طلب جديد" },
-            { v: "tester.assigned", l: "🧪 عند تكليف التيستر (إيميل التكليف بأزرار القبول/الرفض)" },
+            { v: "tester.assigned", l: "🧪 عند تكليف التيستر (إيميل التكليف)" },
             { v: "ticket.assigned", l: "👤 عند تعيين/إعادة تعيين مطور على تذكرة" },
             { v: "tester.accepted", l: "✅ عند قبول التيستر للتكليف" },
             { v: "tester.declined", l: "❌ عند رفض التيستر للتكليف (بسبب)" },
