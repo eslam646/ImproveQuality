@@ -6,7 +6,7 @@ import { sendMail } from "./email";
 import { renderBlocks, renderTemplate, templateVars, wrapEmail } from "./templates";
 import { assignmentEmailActions } from "./assignment-links";
 import { DEFAULT_TEMPLATE_BLOCKS } from "./types";
-import type { Action, DevStatus, Job, Settings } from "./types";
+import type { Action, DevStatus, Job, Settings, Staff } from "./types";
 import { nowIso } from "./util";
 
 export interface ProcessReport {
@@ -85,16 +85,44 @@ async function executeJob(job: Job, settings: Settings): Promise<void> {
     const subject = renderTemplate(tmpl.subject, vars, { htmlEscape: false });
     const intro = renderTemplate(tmpl.body_html, vars);
     // القالب له أقسام مرئية يتحكم بها الأدمن — الافتراضي عند عدم التخصيص
-    let bodyInner = renderBlocks(vars, { ...DEFAULT_TEMPLATE_BLOCKS, ...(tmpl.blocks ?? {}) }, intro);
-    // لو الإيميل موجه للمكلَّف وقراره ما زال معلقاً → ألحق أزرار القبول/الاعتذار الموقعة داخل الإيميل
+    const bodyInner = renderBlocks(vars, { ...DEFAULT_TEMPLATE_BLOCKS, ...(tmpl.blocks ?? {}) }, intro);
+
+    // ═══ أزرار القرار شخصية وسرية — لا تُرسل أبداً في إيميل جماعي ═══
+    // من له قرار معلق يستلم نسخته الخاصة وحده (بأزراره الموقعة باسمه)، والبقية يستلمون النسخة العامة بلا أزرار.
+    // هذا يمنع وصول أزرار «أحمد» إلى صندوق «ليلى» فيُسجل قبول باسمه وهي الضاغطة.
+    const personal: { staff: Staff; role: "tester" | "developer" }[] = [];
     const devStaff = ticket.developer_id ? await repo.staffGet(ticket.developer_id) : null;
-    if (devStaff?.email && to.includes(devStaff.email.toLowerCase()) && ticket.developer_assignment_status === "pending") {
-      bodyInner += assignmentEmailActions(settings.base_url, ticket, "developer", devStaff);
+    if (devStaff?.email && ticket.developer_assignment_status === "pending") {
+      const em = devStaff.email.toLowerCase();
+      if (to.includes(em) || cc.includes(em)) personal.push({ staff: devStaff, role: "developer" });
     }
     const testerStaff = ticket.tester_id ? await repo.staffGet(ticket.tester_id) : null;
-    if (testerStaff?.email && to.includes(testerStaff.email.toLowerCase()) && ticket.tester_assignment_status === "pending") {
-      bodyInner += assignmentEmailActions(settings.base_url, ticket, "tester", testerStaff);
+    if (testerStaff?.email && ticket.tester_assignment_status === "pending") {
+      const em = testerStaff.email.toLowerCase();
+      if (to.includes(em) || cc.includes(em)) personal.push({ staff: testerStaff, role: "tester" });
     }
+
+    // 1) نسخ شخصية بأزرار لكل صاحب قرار معلق — كل واحد وحده تماماً
+    for (const p of personal) {
+      const em = p.staff.email.toLowerCase();
+      to = to.filter((e) => e !== em);
+      cc = cc.filter((e) => e !== em);
+      const personalHtml = wrapEmail(subject, bodyInner + assignmentEmailActions(settings.base_url, ticket, p.role, p.staff), settings);
+      const plog = await repo.emailLogAdd({
+        job_id: job.id, ticket_id: ticket.id, to_addr: p.staff.email, cc_addr: null,
+        provider: "pending", provider_msg_id: null, subject, body_html: personalHtml, status: "logged", error: null,
+      });
+      const pres = await sendMail({ to: [p.staff.email], cc: [], subject, html: personalHtml }, settings);
+      if (pres.error) {
+        await repo.emailLogSetProvider(plog.id, pres.provider, pres.msgId, "failed", pres.error);
+        throw new Error(pres.error);
+      }
+      await repo.emailLogSetProvider(plog.id, pres.provider, pres.msgId, pres.provider === "log" ? "logged" : "sent", null);
+    }
+
+    // 2) النسخة العامة بلا أزرار لبقية المستلمين
+    if (!to.length && cc.length) { to = cc; cc = []; }
+    if (!to.length) return;
     const html = wrapEmail(subject, bodyInner, settings);
 
     const log = await repo.emailLogAdd({
