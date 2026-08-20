@@ -170,6 +170,13 @@ export const SEED_TEMPLATES: EmailTemplate[] = [
     created_at: nowIso(), updated_at: nowIso(),
   },
   {
+    id: "tmpl-assignment-revoked", name: "سحب التكليف — أُعيد الإسناد لشخص آخر",
+    subject: "↩️ سُحب تكليفك بالطلب {{code}} — أُسند إلى {{new_assignee}}",
+    body_html: `مرحباً <b>{{previous_assignee}}</b>،<br>تم <b>سحب تكليفك</b> ({{assignment_role_label}}) بالطلب أدناه وأُعيد إسناده إلى <b>{{new_assignee}}</b> بواسطة {{actor_name}}.<br>لا يلزمك أي إجراء — أزرار القبول/الرفض في الإيميلات السابقة لم تعد صالحة.`,
+    blocks: { ...DEFAULT_TEMPLATE_BLOCKS, details: false, note: false, update_button: false, track_button: false },
+    created_at: nowIso(), updated_at: nowIso(),
+  },
+  {
     id: "tmpl-note-added", name: "ملاحظة / رد جديد على الطلب",
     subject: "💬 ملاحظة جديدة على {{code}} — {{actor_name}}",
     body_html: `أضاف <b>{{actor_name}}</b> ملاحظة على الطلب:<br><div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:12px;margin-top:8px">{{note}}</div>`,
@@ -311,6 +318,15 @@ export const SEED_RULES: AutomationRule[] = [
     actions: [
       { type: "send_email", to: [{ kind: "ref", ref: "ticket_parties" }], cc: [], template_id: "tmpl-note-added" },
       { type: "notify", to: [{ kind: "ref", ref: "ticket_parties" }], message: "💬 {{actor_name}} على {{code}}: {{note}}" },
+    ],
+    enabled: 1, run_count: 0, created_at: nowIso(),
+  },
+  {
+    id: "rule-assignment-revoked", name: "سحب التكليف → إبلاغ المكلَّف السابق", trigger_type: "assignment.revoked", trigger_field: null,
+    conditions: [],
+    actions: [
+      { type: "send_email", to: [{ kind: "ref", ref: "previous_assignee" }], cc: [], template_id: "tmpl-assignment-revoked" },
+      { type: "notify", to: [{ kind: "ref", ref: "previous_assignee" }], message: "↩️ سُحب تكليفك بـ{{code}} — أُسند إلى {{new_assignee}}" },
     ],
     enabled: 1, run_count: 0, created_at: nowIso(),
   },

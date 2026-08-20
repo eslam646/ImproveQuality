@@ -16,6 +16,7 @@ const REF_OPTIONS = [
   { v: "developer_manager", l: "مدير المطور" },
   { v: "ticket_managers", l: "مديرو كل أطراف الطلب" },
   { v: "client", l: "بريد مقدم الطلب المسجل بالتذكرة" },
+  { v: "previous_assignee", l: "المكلَّف السابق (الذي سُحب منه التكليف)" },
 ] as const;
 
 type RecState = { refs: string[]; roles: string[]; staff: string[]; emails: string };
@@ -147,6 +148,7 @@ export function RuleBuilder({ initial, templates, staff }: {
             { v: "tester.declined", l: "❌ عند رفض التيستر للتكليف (بسبب)" },
             { v: "developer.accepted", l: "✅ عند قبول المطور للتكليف" },
             { v: "developer.declined", l: "❌ عند رفض المطور للتكليف (بسبب)" },
+            { v: "assignment.revoked", l: "↩️ عند سحب التكليف من شخص (إعادة إسناد)" },
             { v: "urgent.withdrawal", l: "🙅 عند الاعتذار عن الدعم الفوري بعد القبول" },
             { v: "urgent.progress", l: "🚨 عند تحديث موقف الدعم الفوري (مازلت أعمل / انتهيت)" },
             { v: "ticket.rejected", l: "❌ عند رفض الطلب نهائياً (بسبب)" },

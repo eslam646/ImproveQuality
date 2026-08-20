@@ -237,8 +237,39 @@ export async function assignTesterOp(
     old_values: { tester_id: old.tester_id, tester_name: old.tester_name },
     new_values: { tester_id: testerId, tester_name: ts.name, status: "pending" },
   });
+  // إعادة إسناد؟ أبلغ المكلَّف السابق أن تكليفه سُحب (قاعدة أتمتة قابلة للتحكم)
+  if (old.tester_id && old.tester_id !== testerId) {
+    await fireAssignmentRevoked(ticket, "tester", old.tester_id, old.tester_name, ts.name, actorLabel, assignedBy);
+  }
   await fireTesterAssignedEvent(ticket, actorLabel, assignedBy);
   return ticket;
+}
+
+// ═══ سحب التكليف عند إعادة الإسناد — يمر عبر قاعدة «سحب التكليف» ═══
+async function fireAssignmentRevoked(
+  ticket: Ticket, role: "tester" | "developer",
+  previousId: string, previousName: string | null | undefined,
+  newName: string, actorLabel: string, actorStaffId: string | null,
+) {
+  const repo = await getRepo();
+  const evt = await repo.eventAdd({
+    ticket_id: ticket.id, type: "note.added", actor_label: actorLabel,
+    old_values: null,
+    new_values: { note: `↩️ سُحب تكليف ${role === "tester" ? "الاختبار" : "التطوير"} من ${previousName ?? "—"} وأُسند إلى ${newName}` },
+  });
+  await emit({
+    id: evt.id, type: "assignment.revoked",
+    ctx: {
+      ticket, old: null, actor_label: actorLabel, actor_staff_id: actorStaffId,
+      vars: {
+        previous_assignee: previousName ?? "—",
+        previous_assignee_id: previousId,
+        new_assignee: newName,
+        assignment_role_label: role === "tester" ? "مسؤول الاختبار" : "المطور",
+        actor_name: actorLabel.split(" (")[0],
+      },
+    },
+  });
 }
 
 // ═══ التقدير المنفصل: الديف يضع تقديره والتيست يضع تقديره — والإجمالي يُجمع تلقائياً ═══
@@ -324,6 +355,10 @@ export async function assignDeveloperOp(
     old_values: { developer_id: old.developer_id, developer_name: old.developer_name },
     new_values: { developer_id: developerId, developer_name: dev?.name ?? null, status: "pending" },
   });
+  // إعادة إسناد؟ أبلغ المطور السابق أن تكليفه سُحب
+  if (old.developer_id && old.developer_id !== developerId) {
+    await fireAssignmentRevoked(ticket, "developer", old.developer_id, old.developer_name, dev?.name ?? "—", actorLabel, assignedBy);
+  }
   const evt = await repo.eventAdd({
     ticket_id: ticket.id, type: "ticket.assigned", actor_label: actorLabel,
     old_values: { developer: old.developer_name }, new_values: { developer: dev?.name },

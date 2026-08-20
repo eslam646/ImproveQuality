@@ -176,6 +176,7 @@ export type TriggerType =
   | "tester.assigned"        // إسناد التيستر
   | "tester.accepted" | "tester.declined"       // قرار التيستر
   | "developer.accepted" | "developer.declined" // قرار الديف
+  | "assignment.revoked"     // سُحب التكليف من شخص (أُعيد الإسناد لغيره)
   | "urgent.withdrawal"      // اعتذار عن الدعم الفوري بعد القبول
   | "urgent.progress"        // موقف الدعم الفوري: مازلت أعمل / انتهيت
   | "ticket.rejected"        // رفض الطلب نهائياً (بسبب)
@@ -197,7 +198,7 @@ export type Recipient =
   | { kind: "ref"; ref:
       | "developer" | "tester" | "creator"
       | "developer_manager" | "tester_manager" | "creator_manager"
-      | "ticket_parties" | "ticket_managers" | "client" }
+      | "ticket_parties" | "ticket_managers" | "client" | "previous_assignee" }
   | { kind: "staff"; staff_id: string }
   | { kind: "role"; role: Role }
   | { kind: "email"; email: string };

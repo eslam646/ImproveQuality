@@ -61,8 +61,9 @@ async function executeJob(job: Job, settings: Settings): Promise<void> {
   if (!ticket) throw new Error("التذكرة غير موجودة");
 
   if (action.type === "send_email") {
-    const toRes = await resolveRecipients(repo, ticket, action.to);
-    const ccRes = await resolveRecipients(repo, ticket, action.cc);
+    const extraResolve = { previous_assignee_id: (extra.custom as Record<string, string> | null | undefined)?.previous_assignee_id ?? null };
+    const toRes = await resolveRecipients(repo, ticket, action.to, extraResolve);
+    const ccRes = await resolveRecipients(repo, ticket, action.cc, extraResolve);
     // منفّذ الفعل لا يستلم إيميلاً عن فعله هو (مثلاً: التيستر الذي قَبِل لا يصله «قَبِل التيستر»)
     const excludeId = extra.exclude_staff_id ?? null;
     const excludeEmail = excludeId
@@ -108,7 +109,7 @@ async function executeJob(job: Job, settings: Settings): Promise<void> {
   if (action.type === "notify") {
     const vars = { ...templateVars(ticket, settings, extra), ...(extra.custom ?? {}) };
     const msg = renderTemplate(action.message, vars, { htmlEscape: false });
-    const res = await resolveRecipients(repo, ticket, action.to);
+    const res = await resolveRecipients(repo, ticket, action.to, { previous_assignee_id: (extra.custom as Record<string, string> | null | undefined)?.previous_assignee_id ?? null });
     for (const s of res.staff) {
       if (s.id === (extra.exclude_staff_id ?? null)) continue;
       await repo.notifyAdd({ staff_id: s.id, ticket_id: ticket.id, message: msg });

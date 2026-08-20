@@ -15,6 +15,7 @@ const TRIGGER_LABELS: Record<TriggerType, string> = {
   "tester.declined": "❌ رفض التيستر",
   "developer.accepted": "✅ قبول المطور",
   "developer.declined": "❌ رفض المطور",
+  "assignment.revoked": "↩️ سحب التكليف (إعادة إسناد)",
   "urgent.withdrawal": "🙅 اعتذار عن الدعم الفوري",
   "urgent.progress": "🚨 موقف الدعم الفوري",
   "ticket.rejected": "❌ رفض الطلب نهائياً",

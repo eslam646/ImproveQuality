@@ -31,6 +31,7 @@ export async function resolveRecipients(
   repo: Repo,
   ticket: Ticket,
   recs: Recipient[],
+  extras?: { previous_assignee_id?: string | null },
 ): Promise<{ staff: Staff[]; emails: string[] }> {
   const staffOut: Staff[] = [];
   const emails: string[] = [];
@@ -56,6 +57,12 @@ export async function resolveRecipients(
     const developer = ticket.developer_id ? await getStaff(ticket.developer_id) : null;
     if (r.ref === "ticket_parties") {
       [creator, tester, developer].forEach((s) => { if (s?.active) staffOut.push(s); });
+      continue;
+    }
+    if (r.ref === "previous_assignee") {
+      // المكلَّف السابق الذي سُحب منه التكليف — يصل من سياق الحدث
+      const prev = await getStaff(extras?.previous_assignee_id);
+      if (prev?.active) staffOut.push(prev);
       continue;
     }
     if (r.ref === "ticket_managers") {
