@@ -745,24 +745,10 @@ export async function assignSpecialistOp(
   const staff = await repo.staffGet(staffId);
   if (!staff || !staff.active || staff.role !== "developer") return { ok: false, error: "اختر مطوراً نشطاً" };
 
-  const current = (await repo.specialistList(ticketId)).find((x) => x.spec_key === specKey);
-  if (current && current.staff_id !== staffId && current.status !== "declined") {
-    // سحب من الحالي وإبلاغه عبر قاعدة «سحب التكليف»
-    const evt = await repo.eventAdd({
-      ticket_id: ticketId, type: "note.added", actor_label: actorLabel,
-      old_values: null, new_values: { note: `↩️ سُحب تخصص «${spec.label}» من ${current.staff_name} وأُسند إلى ${staff.name}` },
-    });
-    await emit({
-      id: evt.id, type: "assignment.revoked",
-      ctx: {
-        ticket: t, old: null, actor_label: actorLabel, actor_staff_id: assignedBy,
-        vars: {
-          previous_assignee: current.staff_name, previous_assignee_id: current.staff_id,
-          new_assignee: staff.name, assignment_role_label: spec.label,
-          actor_name: actorLabel.split(" (")[0],
-        },
-      },
-    });
+  // يُسمح بأكثر من شخص لنفس التخصص (باك×2 مثلاً) — لكن لا يُكرر نفس الشخص في نفس التخصص
+  const existing = (await repo.specialistList(ticketId)).filter((x) => x.spec_key === specKey && x.status !== "declined");
+  if (existing.some((x) => x.staff_id === staffId)) {
+    return { ok: false, error: `${staff.name} مسند بالفعل على تخصص «${spec.label}» في هذا الطلب` };
   }
 
   const sp = await repo.specialistAdd({
@@ -774,8 +760,8 @@ export async function assignSpecialistOp(
   await repo.auditAdd({
     entity_type: "ticket", entity_id: ticketId, action: "specialist.assigned",
     actor_staff_id: assignedBy, actor_label: actorLabel,
-    old_values: current ? { staff_id: current.staff_id, staff_name: current.staff_name } : null,
-    new_values: { spec: spec.key, spec_label: spec.label, staff_id: staff.id, staff_name: staff.name },
+    old_values: null,
+    new_values: { spec: spec.key, spec_label: spec.label, staff_id: staff.id, staff_name: staff.name, team_size: existing.length + 1 },
   });
   const evt = await repo.eventAdd({
     ticket_id: ticketId, type: "ticket.assigned", actor_label: actorLabel,
@@ -788,6 +774,51 @@ export async function assignSpecialistOp(
       vars: await specialistVars(sp, { specialist_id: staff.id }),
     },
   });
+  return { ok: true };
+}
+
+// إزالة متخصص من الطلب — تُبلغه عبر قاعدة «سحب التكليف» ويعاد حساب الإجمالي
+export async function removeSpecialistOp(
+  specialistId: string, actorLabel: string, actorStaffId: string | null,
+): Promise<{ ok: boolean; error?: string }> {
+  const repo = await getRepo();
+  const sp = await repo.specialistGet(specialistId);
+  if (!sp || !sp.is_current) return { ok: false, error: "التكليف غير موجود أو أُزيل بالفعل" };
+  const t = await repo.ticketById(sp.ticket_id);
+  if (!t) return { ok: false, error: "الطلب غير موجود" };
+  if (sp.status === "ready") return { ok: false, error: "أعلن جاهزيته بالفعل — لا معنى لإزالته بعد إنهاء جزئه" };
+
+  await repo.specialistRemove(sp.id);
+  await recalcTicketEstimation(sp.ticket_id);
+  await repo.auditAdd({
+    entity_type: "ticket", entity_id: sp.ticket_id, action: "specialist.removed",
+    actor_staff_id: actorStaffId, actor_label: actorLabel,
+    old_values: { spec: sp.spec_key, staff_id: sp.staff_id, staff_name: sp.staff_name, status: sp.status },
+    new_values: null,
+  });
+  const evt = await repo.eventAdd({
+    ticket_id: sp.ticket_id, type: "note.added", actor_label: actorLabel,
+    old_values: null, new_values: { note: `↩️ أُزيل ${sp.staff_name} من تخصص «${sp.spec_label}»` },
+  });
+  // إبلاغ المُزال عبر قاعدة «سحب التكليف» نفسها
+  await emit({
+    id: evt.id, type: "assignment.revoked",
+    ctx: {
+      ticket: t, old: null, actor_label: actorLabel, actor_staff_id: actorStaffId,
+      vars: {
+        previous_assignee: sp.staff_name, previous_assignee_id: sp.staff_id,
+        new_assignee: "—", assignment_role_label: sp.spec_label,
+        actor_name: actorLabel.split(" (")[0],
+      },
+    },
+  });
+
+  // إزالة آخر متأخر قد تجعل الجميع المتبقين جاهزين → التاسك تتحول «جاهز للاختبار» تلقائياً
+  const remaining = (await repo.specialistList(sp.ticket_id)).filter((x) => x.status !== "declined");
+  const allReady = remaining.length > 0 && remaining.every((x) => x.status === "ready");
+  if (allReady && !["ready_for_test", "testing", "test_passed", "closed", "fixed", "rejected"].includes(t.dev_status)) {
+    await changeStatusOp(sp.ticket_id, "ready_for_test", "النظام — اكتملت جاهزية كل التخصصات بعد إزالة متخصص");
+  }
   return { ok: true };
 }
 

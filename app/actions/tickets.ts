@@ -477,3 +477,14 @@ export async function specialistReadyAction(formData: FormData) {
     ? `ok=${enc(r.allReady ? "🎉 كل التخصصات جاهزة — تحولت التاسك لجاهز للاختبار وأُبلغ التيست" : "سُجلت جاهزية جزئك ✓ — التاسك تتحول للاختبار بعد جاهزية الباقين")}`
     : `err=${enc(r.error ?? "تعذر التسجيل")}`}`);
 }
+
+// إزالة متخصص من الطلب — بصلاحية «إسناد / تغيير المطور»؛ يُبلَّغ المُزال بالإيميل
+export async function removeSpecialistAction(formData: FormData) {
+  const actor = await requireActionPermission("assign_developer");
+  const code = String(formData.get("code") ?? "");
+  const specialistId = String(formData.get("specialist_id") ?? "");
+  const { removeSpecialistOp } = await import("@/lib/ops");
+  const r = await removeSpecialistOp(specialistId, labelOf(actor), actor.id);
+  revalidatePath(`/tickets/${code}`);
+  redirect(`/tickets/${code}?${r.ok ? `ok=${enc("أُزيل المتخصص وأُبلغ بالإيميل ✓")}` : `err=${enc(r.error ?? "تعذر الإزالة")}`}`);
+}

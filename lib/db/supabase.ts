@@ -337,8 +337,7 @@ export async function createSupabaseRepo(): Promise<Repo> {
     },
 
     async specialistAdd(sp) {
-      await sb.from("ticket_specialists").update({ is_current: false })
-        .eq("ticket_id", sp.ticket_id).eq("spec_key", sp.spec_key).eq("is_current", true);
+      // يُسمح بأكثر من شخص لنفس التخصص — الإزالة تتم صراحة عبر specialistRemove
       const row = {
         id: genId("spc"), ticket_id: sp.ticket_id, spec_key: sp.spec_key, spec_label: sp.spec_label,
         staff_id: sp.staff_id, staff_name: sp.staff_name, status: "pending",

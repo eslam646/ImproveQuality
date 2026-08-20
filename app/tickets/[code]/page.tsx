@@ -4,7 +4,7 @@ import { getRepo } from "@/lib/db";
 import { requireStaff, permissionsForStaff } from "@/lib/auth";
 import {
   addNoteAction, assignDeveloperAction, assignTesterAction,
-  assignSpecialistAction, declineAssignmentAction, respondSpecialistAction,
+  assignSpecialistAction, declineAssignmentAction, removeSpecialistAction, respondSpecialistAction,
   respondToAssignmentAction, setEstimationAction, specialistReadyAction,
 } from "@/app/actions/tickets";
 import { Badge, Button, Card, Field, Msg, selectCls, inputCls } from "@/components/ui";
@@ -271,6 +271,14 @@ export default async function TicketDetailsPage({
                           </span>
                         </div>
                         {sp.decline_reason && <p className="mt-1 text-xs text-rose-600">سبب الرفض: {sp.decline_reason}</p>}
+
+                        {canAssignDev && sp.status !== "ready" && (
+                          <form action={removeSpecialistAction} className="mt-2">
+                            <input type="hidden" name="code" value={ticket.code} />
+                            <input type="hidden" name="specialist_id" value={sp.id} />
+                            <button type="submit" className="rounded bg-rose-50 px-3 py-1 text-xs font-bold text-rose-600 hover:bg-rose-100">↩️ إزالة من التخصص (يُبلَّغ بالإيميل)</button>
+                          </form>
+                        )}
 
                         {mine && sp.status === "pending" && (
                           <div className="mt-3 grid gap-2 md:grid-cols-2">

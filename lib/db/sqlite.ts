@@ -558,9 +558,7 @@ export function createSqliteRepo(): Repo {
     },
 
     async specialistAdd(sp) {
-      // إسناد جديد لنفس التخصص يسحب الحالي (إعادة إسناد)
-      db.prepare("UPDATE ticket_specialists SET is_current=0 WHERE ticket_id=? AND spec_key=? AND is_current=1")
-        .run(sp.ticket_id, sp.spec_key);
+      // يُسمح بأكثر من شخص لنفس التخصص — الإزالة تتم صراحة عبر specialistRemove
       const row: TicketSpecialist = {
         id: genId("spc"), ticket_id: sp.ticket_id, spec_key: sp.spec_key, spec_label: sp.spec_label,
         staff_id: sp.staff_id, staff_name: sp.staff_name, status: "pending",
