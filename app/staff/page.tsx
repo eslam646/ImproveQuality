@@ -15,6 +15,8 @@ export default async function StaffPage() {
   const staff = await repo.staffList();
   const clients = await repo.clientsList();
   const privateLinks = await repo.privateLinksList();
+  const settings = await repo.settingsGet();
+  const specs = settings.dev_specializations.filter((x) => x.active).map((x) => ({ key: x.key, label: x.label }));
 
   return (
     <div className="space-y-5">
@@ -26,9 +28,11 @@ export default async function StaffPage() {
       </div>
       <Card>
         <StaffManager
+          specializations={specs}
           staff={staff.map((s) => ({
             id: s.id, name: s.name, email: s.email, role: s.role,
             role_label: ROLE_LABELS[s.role], manager_id: s.manager_id, active: !!s.active,
+            specializations: s.specializations ?? null,
           }))}
         />
       </Card>

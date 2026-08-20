@@ -24,7 +24,7 @@ export interface Repo {
   staffList(activeOnly?: boolean): Promise<Staff[]>;
   staffGet(id: string): Promise<Staff | null>;
   staffByEmail(email: string): Promise<Staff | null>;
-  staffCreate(d: { name: string; email: string; role: Staff["role"]; manager_id: string | null }): Promise<Staff>;
+  staffCreate(d: { name: string; email: string; role: Staff["role"]; manager_id: string | null; specializations?: string[] | null }): Promise<Staff>;
   staffUpdate(id: string, patch: Partial<Staff>): Promise<void>;
   staffSetPin(id: string, pinHash: string): Promise<void>;
 

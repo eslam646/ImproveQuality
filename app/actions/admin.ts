@@ -127,12 +127,12 @@ export async function clientDeleteAction(id: string) {
 }
 
 // ====== الموظفون ======
-export async function upsertStaffAction(input: { id?: string; name: string; email: string; role: Role; manager_id: string }) {
+export async function upsertStaffAction(input: { id?: string; name: string; email: string; role: Role; manager_id: string; specializations?: string[] }) {
   await requireStaff(["admin"]);
   const parsed = staffSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message };
   const repo = await getRepo();
-  const d = { ...parsed.data, manager_id: parsed.data.manager_id || null };
+  const d = { ...parsed.data, manager_id: parsed.data.manager_id || null, specializations: parsed.data.role === "developer" ? (parsed.data.specializations ?? null) : null };
   if (input.id) await repo.staffUpdate(input.id, d);
   else await repo.staffCreate(d);
   revalidatePath("/staff");

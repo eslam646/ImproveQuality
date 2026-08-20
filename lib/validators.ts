@@ -25,6 +25,7 @@ export const staffSchema = z.object({
   email: z.string().trim().email("بريد غير صالح"),
   role: z.enum(["admin", "support", "developer", "tester"]),
   manager_id: z.string().optional().or(z.literal("")),
+  specializations: z.array(z.string().max(40)).max(20).optional(),
 });
 
 export const templateSchema = z.object({

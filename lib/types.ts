@@ -33,6 +33,7 @@ export interface Staff {
   manager_id: string | null;
   active: number; // 1 | 0
   pin_hash?: string | null; // دخول الإنتاج AUTH_MODE=pin
+  specializations?: string[] | null; // تخصصات المطور (مفاتيح من إعدادات التخصصات) — فارغة = يظهر في كل القوائم
   created_at: string;
 }
 

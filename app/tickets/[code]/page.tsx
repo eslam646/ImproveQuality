@@ -13,6 +13,7 @@ import { fmtDate, parseFileRef } from "@/lib/util";
 import { AttachmentUpload } from "@/components/attachment-upload";
 import { StatusChangeForm } from "@/components/status-change-form";
 import { UrgentProgressForm } from "@/components/urgent-progress-form";
+import { SpecDeveloperPicker } from "@/components/spec-developer-picker";
 import type { DevStatus, TicketEvent } from "@/lib/types";
 import { TeamsMeetings } from "@/components/teams-meetings";
 import { teamsConfigStatus } from "@/lib/teams";
@@ -25,7 +26,9 @@ function EventLine({ e }: { e: TicketEvent }) {
     e.type === "ticket.assigned"
       ? (e.new_values as { tester?: string })?.tester
         ? `أسند الاختبار إلى ${(e.new_values as { tester?: string })?.tester}`
-        : `أسند الطلب إلى ${(e.new_values as { developer?: string })?.developer ?? ""}` :
+        : (e.new_values as { specialist?: string })?.specialist
+          ? `أسند تخصصاً — ${(e.new_values as { specialist?: string })?.specialist}`
+          : `أسند الطلب إلى ${(e.new_values as { developer?: string })?.developer ?? ""}` :
     e.type === "field.changed"
       ? `غيّر الحالة: ${STATUS_LABELS[(e.old_values as { dev_status: DevStatus }).dev_status]} ← ${STATUS_LABELS[(e.new_values as { dev_status: DevStatus }).dev_status]}`
       : e.type === "note.added" ? `أضاف ملاحظة: ${(e.new_values as { note?: string })?.note ?? ""}`
@@ -322,16 +325,11 @@ export default async function TicketDetailsPage({
               {canAssignDev && settings.dev_specializations.filter((x) => x.active).length > 0 && (
                 <form action={assignSpecialistAction} className="flex flex-wrap items-end gap-2 rounded-xl border border-indigo-100 bg-indigo-50/40 p-3">
                   <input type="hidden" name="code" value={ticket.code} />
-                  <label className="text-sm"><span className="mb-1 block text-xs font-bold text-slate-600">التخصص</span>
-                    <select name="spec_key" required className={selectCls}>
-                      {settings.dev_specializations.filter((x) => x.active).map((x) => <option key={x.key} value={x.key}>{x.label}</option>)}
-                    </select>
-                  </label>
-                  <label className="text-sm"><span className="mb-1 block text-xs font-bold text-slate-600">المطور</span>
-                    <select name="staff_id" required defaultValue="" className={selectCls}>
-                      <option value="" disabled>اختر…</option>
-                      {devs.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
-                    </select>
+                  <label className="text-sm"><span className="mb-1 block text-xs font-bold text-slate-600">التخصص ← المطور <span className="font-normal text-slate-400">(القائمة تتصفى حسب تخصص الموظف)</span></span>
+                    <SpecDeveloperPicker
+                      specs={settings.dev_specializations.filter((x) => x.active).map((x) => ({ key: x.key, label: x.label }))}
+                      devs={devs.map((d) => ({ id: d.id, name: d.name, specializations: d.specializations ?? null }))}
+                    />
                   </label>
                   <input name="est_days" type="number" min="0" step="0.5" placeholder="تقديره: أيام" className={`${inputCls} w-28`} />
                   <input name="est_hours" type="number" min="0" step="1" placeholder="ساعات" className={`${inputCls} w-24`} />

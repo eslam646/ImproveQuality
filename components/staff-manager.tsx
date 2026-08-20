@@ -7,15 +7,15 @@ import type { Role } from "@/lib/types";
 
 interface StaffRow {
   id: string; name: string; email: string; role: Role; role_label: string;
-  manager_id: string | null; active: boolean;
+  manager_id: string | null; active: boolean; specializations?: string[] | null;
 }
 
 const inputCls = "rounded-lg border border-slate-300 px-3 py-1.5 text-sm";
 
-export function StaffManager({ staff }: { staff: StaffRow[] }) {
+export function StaffManager({ staff, specializations = [] }: { staff: StaffRow[]; specializations?: { key: string; label: string }[] }) {
   const router = useRouter();
-  const [form, setForm] = useState<{ id: string | null; name: string; email: string; role: Role; manager_id: string }>
-    ({ id: null, name: "", email: "", role: "developer", manager_id: "" });
+  const [form, setForm] = useState<{ id: string | null; name: string; email: string; role: Role; manager_id: string; specializations: string[] }>
+    ({ id: null, name: "", email: "", role: "developer", manager_id: "", specializations: [] });
   const [error, setError] = useState<string | null>(null);
 
   return (
@@ -28,8 +28,9 @@ export function StaffManager({ staff }: { staff: StaffRow[] }) {
           const r = await upsertStaffAction({
             ...(form.id ? { id: form.id } : {}),
             name: form.name, email: form.email, role: form.role, manager_id: form.manager_id,
+            specializations: form.role === "developer" ? form.specializations : [],
           });
-          if (r.ok) { setForm({ id: null, name: "", email: "", role: "developer", manager_id: "" }); setError(null); router.refresh(); }
+          if (r.ok) { setForm({ id: null, name: "", email: "", role: "developer", manager_id: "", specializations: [] }); setError(null); router.refresh(); }
           else setError(r.error ?? "خطأ");
         }}
       >
@@ -45,11 +46,27 @@ export function StaffManager({ staff }: { staff: StaffRow[] }) {
           <option value="">— مديره المباشر —</option>
           {staff.filter((s) => s.id !== form.id).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
         </select>
+        {form.role === "developer" && specializations.length > 0 && (
+          <div className="flex w-full flex-wrap items-center gap-2 rounded-lg border border-indigo-100 bg-indigo-50/60 px-3 py-2">
+            <span className="text-xs font-bold text-indigo-700">تخصصاته:</span>
+            {specializations.map((sp) => (
+              <label key={sp.key} className="flex items-center gap-1 text-xs">
+                <input
+                  type="checkbox"
+                  checked={form.specializations.includes(sp.key)}
+                  onChange={(e) => setForm({ ...form, specializations: e.target.checked ? [...form.specializations, sp.key] : form.specializations.filter((k) => k !== sp.key) })}
+                />
+                {sp.label}
+              </label>
+            ))}
+            <span className="text-[11px] text-slate-400">بدون تحديد = يظهر في كل قوائم التخصصات</span>
+          </div>
+        )}
         <button className="rounded-lg bg-blue-600 px-4 py-1.5 text-sm font-bold text-white hover:bg-blue-700">
           {form.id ? "تحديث ✓" : "+ إضافة"}
         </button>
         {form.id && (
-          <button type="button" className="rounded-lg bg-slate-300 px-3 py-1.5 text-sm" onClick={() => setForm({ id: null, name: "", email: "", role: "developer", manager_id: "" })}>إلغاء</button>
+          <button type="button" className="rounded-lg bg-slate-300 px-3 py-1.5 text-sm" onClick={() => setForm({ id: null, name: "", email: "", role: "developer", manager_id: "", specializations: [] })}>إلغاء</button>
         )}
         {error && <span className="text-sm font-bold text-rose-600">{error}</span>}
       </form>
@@ -66,7 +83,7 @@ export function StaffManager({ staff }: { staff: StaffRow[] }) {
             <tr key={s.id} className="border-b border-slate-100">
               <td className="py-2.5 font-bold">{s.name}</td>
               <td className="text-slate-600" dir="ltr">{s.email}</td>
-              <td>{s.role_label}</td>
+              <td>{s.role_label}{s.role === "developer" && s.specializations?.length ? <span className="block text-[11px] text-indigo-600">{s.specializations.map((k) => specializations.find((x) => x.key === k)?.label ?? k).join("، ")}</span> : null}</td>
               <td className="text-slate-600">{staff.find((m) => m.id === s.manager_id)?.name ?? "—"}</td>
               <td>
                 <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${s.active ? "bg-green-100 text-green-700" : "bg-slate-200 text-slate-500"}`}>
@@ -75,7 +92,7 @@ export function StaffManager({ staff }: { staff: StaffRow[] }) {
               </td>
               <td className="flex gap-2 py-2 text-xs">
                 <button className="rounded-lg bg-slate-200 px-3 py-1 font-bold hover:bg-slate-300"
-                  onClick={() => setForm({ id: s.id, name: s.name, email: s.email, role: s.role, manager_id: s.manager_id ?? "" })}>
+                  onClick={() => setForm({ id: s.id, name: s.name, email: s.email, role: s.role, manager_id: s.manager_id ?? "", specializations: s.specializations ?? [] })}>
                   تحرير
                 </button>
                 <button className="rounded-lg bg-amber-100 px-3 py-1 font-bold text-amber-800 hover:bg-amber-200"

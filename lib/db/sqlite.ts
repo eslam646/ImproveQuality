@@ -125,6 +125,7 @@ export function createSqliteRepo(): Repo {
   try { db.exec("ALTER TABLE tickets ADD COLUMN test_started_at TEXT"); } catch { /* موجود */ }
   try { db.exec("ALTER TABLE tickets ADD COLUMN reminders_sent TEXT"); } catch { /* موجود */ }
   try { db.exec("ALTER TABLE private_access_links ADD COLUMN kind TEXT NOT NULL DEFAULT 'request'"); } catch { /* موجود */ }
+  try { db.exec("ALTER TABLE staff ADD COLUMN specializations TEXT"); } catch { /* موجود */ }
   db.exec(`CREATE TABLE IF NOT EXISTS ticket_specialists (
     id TEXT PRIMARY KEY, ticket_id TEXT NOT NULL, spec_key TEXT NOT NULL, spec_label TEXT NOT NULL,
     staff_id TEXT NOT NULL, staff_name TEXT NOT NULL,
@@ -210,6 +211,12 @@ export function createSqliteRepo(): Repo {
   });
 
   type TicketRow = Omit<Ticket, "custom_data"> & { custom_data: string | null };
+  const mapStaffRow = (r: Omit<Staff, "specializations"> & { specializations: string | null }): Staff => {
+    let specializations: string[] | null = null;
+    try { specializations = r.specializations ? (JSON.parse(r.specializations) as string[]) : null; } catch { /* فارغ */ }
+    return { ...r, specializations };
+  };
+
   const mapTicket = (r: TicketRow): Ticket => {
     let custom_data: Record<string, string> = {};
     try { custom_data = r.custom_data ? (JSON.parse(r.custom_data) as Record<string, string>) : {}; } catch { /* فارغ */ }
@@ -306,18 +313,20 @@ export function createSqliteRepo(): Repo {
   return {
     async staffList(activeOnly = false) {
       const q = activeOnly ? "SELECT * FROM staff WHERE active=1 ORDER BY name" : "SELECT * FROM staff ORDER BY name";
-      return db.prepare(q).all() as Staff[];
+      return (db.prepare(q).all() as (Omit<Staff, "specializations"> & { specializations: string | null })[]).map(mapStaffRow);
     },
     async staffGet(id) {
-      return (db.prepare("SELECT * FROM staff WHERE id=?").get(id) as Staff) ?? null;
+      const r = db.prepare("SELECT * FROM staff WHERE id=?").get(id) as (Omit<Staff, "specializations"> & { specializations: string | null }) | undefined;
+      return r ? mapStaffRow(r) : null;
     },
     async staffByEmail(email) {
-      return (db.prepare("SELECT * FROM staff WHERE lower(email)=lower(?)").get(email) as Staff) ?? null;
+      const r = db.prepare("SELECT * FROM staff WHERE lower(email)=lower(?)").get(email) as (Omit<Staff, "specializations"> & { specializations: string | null }) | undefined;
+      return r ? mapStaffRow(r) : null;
     },
     async staffCreate(d) {
       const s: Staff = { id: genId("st"), active: 1, created_at: nowIso(), ...d };
-      db.prepare("INSERT INTO staff (id,name,email,role,manager_id,active,created_at) VALUES (?,?,?,?,?,1,?)")
-        .run(s.id, s.name, s.email, s.role, s.manager_id, s.created_at);
+      db.prepare("INSERT INTO staff (id,name,email,role,manager_id,active,specializations,created_at) VALUES (?,?,?,?,?,1,?,?)")
+        .run(s.id, s.name, s.email, s.role, s.manager_id, s.specializations?.length ? JSON.stringify(s.specializations) : null, s.created_at);
       return s;
     },
     async staffSetPin(id, pinHash) {
@@ -327,8 +336,8 @@ export function createSqliteRepo(): Repo {
       const cur = await this.staffGet(id);
       if (!cur) return;
       const m = { ...cur, ...patch };
-      db.prepare("UPDATE staff SET name=?,email=?,role=?,manager_id=?,active=?,created_at=? WHERE id=?")
-        .run(m.name, m.email, m.role, m.manager_id, m.active, m.created_at, m.id);
+      db.prepare("UPDATE staff SET name=?,email=?,role=?,manager_id=?,active=?,specializations=?,created_at=? WHERE id=?")
+        .run(m.name, m.email, m.role, m.manager_id, m.active, m.specializations?.length ? JSON.stringify(m.specializations) : null, m.created_at, id);
     },
 
     async privateLinkCreate(input) {

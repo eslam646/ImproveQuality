@@ -81,12 +81,19 @@ export async function GET(req: Request) {
       const steps: { status_label: string; at: string }[] = [{ status_label: "تم إنشاء الطلب", at: t.created_at }];
       for (const a of [...audit].reverse()) {
         const who = nameOf(a.actor_label);
-        if (a.action === "tester.assigned") steps.push({ status_label: `🧪 أُسند الاختبار إلى ${String((a.new_values as { tester_name?: string })?.tester_name ?? "—")}`, at: a.created_at });
-        else if (a.action === "developer.assigned") steps.push({ status_label: `👨‍💻 أُسند التطوير إلى ${String((a.new_values as { developer_name?: string })?.developer_name ?? "—")}`, at: a.created_at });
+        const nv = (a.new_values ?? {}) as Record<string, string>;
+        const ov = (a.old_values ?? {}) as Record<string, string>;
+        if (a.action === "tester.assigned") steps.push({ status_label: `🧪 أُسند الاختبار إلى ${nv.tester_name ?? "—"}`, at: a.created_at });
+        else if (a.action === "developer.assigned") steps.push({ status_label: `👨‍💻 أُسند التطوير إلى ${nv.developer_name ?? "—"}`, at: a.created_at });
         else if (a.action === "tester.accepted") steps.push({ status_label: `✅ وافق التيستر ${who} على التكليف`, at: a.created_at });
         else if (a.action === "tester.declined") steps.push({ status_label: `❌ رفض التيستر ${who} التكليف — بانتظار إعادة الإسناد`, at: a.created_at });
         else if (a.action === "developer.accepted") steps.push({ status_label: `✅ وافق المطور ${who} على التكليف`, at: a.created_at });
         else if (a.action === "developer.declined") steps.push({ status_label: `❌ رفض المطور ${who} التكليف — بانتظار إعادة الإسناد`, at: a.created_at });
+        else if (a.action === "specialist.assigned") steps.push({ status_label: `🧩 أُسند «${nv.spec_label ?? "تخصص"}» إلى ${nv.staff_name ?? "—"}`, at: a.created_at });
+        else if (a.action === "specialist.accepted") steps.push({ status_label: `✅ قبل ${who} تكليف تخصصه وبدأ عدّاده`, at: a.created_at });
+        else if (a.action === "specialist.declined") steps.push({ status_label: `❌ رفض ${who} تكليف تخصصه — بانتظار إعادة الإسناد`, at: a.created_at });
+        else if (a.action === "specialist.ready") steps.push({ status_label: `🏁 ${who} أنهى جزءه${nv.all_ready ? " — اكتملت جاهزية الجميع" : ""}`, at: a.created_at });
+        else if (a.action === "specialist.removed") steps.push({ status_label: `↩️ أُزيل ${ov.staff_name ?? "—"} من تخصص ${ov.spec ?? ""}`, at: a.created_at });
       }
       for (const e of events.filter((x) => x.type === "field.changed").reverse()) {
         const label = STATUS_LABELS[(e.new_values as { dev_status: DevStatus }).dev_status];
