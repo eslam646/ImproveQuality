@@ -322,7 +322,12 @@ export default async function TicketDetailsPage({
                   🎯 التاسك تتحول «جاهز للاختبار» تلقائياً عندما يعلن <b>كل</b> المتخصصين جاهزيتهم — الجاهز انتهى دوره، والمتأخر عن تقديره يصله إيميل تأخير باسمه.
                 </p>
               )}
-              {canAssignDev && settings.dev_specializations.filter((x) => x.active).length > 0 && (
+              {canAssignDev && settings.dev_specializations.filter((x) => x.active).length > 0 && specialists.length === 0 && ["new", "needs_info"].includes(ticket.dev_status) && (
+                <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                  ⚠️ القاعدة الذهبية: التيست يستلم الطلب أولاً ويحوّله «تم التسليم للديف» — بعدها أسند المتخصصين هنا.
+                </div>
+              )}
+              {canAssignDev && settings.dev_specializations.filter((x) => x.active).length > 0 && !(specialists.length === 0 && ["new", "needs_info"].includes(ticket.dev_status)) && (
                 <form action={assignSpecialistAction} className="flex flex-wrap items-end gap-2 rounded-xl border border-indigo-100 bg-indigo-50/40 p-3">
                   <input type="hidden" name="code" value={ticket.code} />
                   <label className="text-sm"><span className="mb-1 block text-xs font-bold text-slate-600">التخصص ← المطور <span className="font-normal text-slate-400">(القائمة تتصفى حسب تخصص الموظف)</span></span>
@@ -434,23 +439,18 @@ export default async function TicketDetailsPage({
                   </form>
                 )}
 
-                {canAssignDev && (
-                  (ticket.tester_id || ticket.is_urgent) ? (
-                    <form action={assignDeveloperAction} className="space-y-2 rounded-xl border border-blue-100 bg-blue-50/40 p-3">
-                      <input type="hidden" name="code" value={ticket.code} />
-                      <Field label="2) إسناد / إعادة إسناد المطوّر" hint={`يُرسل إيميل للمطور + نسخة لمدخل البيانات — ${canAssignTester ? "لديك صلاحية إسناد المطور" : "سلّمها للمطور المناسب"}`}>
-                        <select name="developer_id" required defaultValue={ticket.developer_id ?? ""} className={selectCls}>
-                          <option value="" disabled>اختر المطور…</option>
-                          {devs.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
-                        </select>
-                      </Field>
-                      <Button type="submit">إسناد المطور 👨‍💻</Button>
-                    </form>
-                  ) : (
-                    <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-                      ⚠️ لا يُسنَد المطوّر إلا بعد تعيين فريق الاختبار (التيست) أولاً — حدّد التيست ثم سلّمها للمطور.
-                    </div>
-                  )
+                {/* إسناد المطوّر المباشر: للدعم الفوري فقط — الطلبات العادية توحّدت على كارت التخصصات */}
+                {canAssignDev && ticket.is_urgent && (
+                  <form action={assignDeveloperAction} className="space-y-2 rounded-xl border border-blue-100 bg-blue-50/40 p-3">
+                    <input type="hidden" name="code" value={ticket.code} />
+                    <Field label="إسناد / إعادة إسناد المطوّر" hint="دعم فوري — يُرسل إيميل التكليف فوراً">
+                      <select name="developer_id" required defaultValue={ticket.developer_id ?? ""} className={selectCls}>
+                        <option value="" disabled>اختر المطور…</option>
+                        {devs.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+                      </select>
+                    </Field>
+                    <Button type="submit">إسناد المطور 👨‍💻</Button>
+                  </form>
                 )}
 
                 {canEstimate && (

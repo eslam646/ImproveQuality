@@ -744,8 +744,16 @@ export async function assignSpecialistOp(
   const staff = await repo.staffGet(staffId);
   if (!staff || !staff.active || staff.role !== "developer") return { ok: false, error: "اختر مطوراً نشطاً" };
 
+  // القاعدة الذهبية موحّدة: لا إسناد تطوير قبل استلام التيست وتحويله «تم التسليم للديف»
+  const existingSpecs = await repo.specialistList(ticketId);
+  // توافق خلفي: تذكرة عليها متخصصون بالفعل (أُسندوا قبل تفعيل القاعدة) يستمر العمل عليها
+  const beforeHandoff = existingSpecs.length === 0 && ["new", "needs_info"].includes(t.dev_status);
+  if (beforeHandoff) {
+    return { ok: false, error: "التيست يستلم الطلب أولاً ويحوّله «تم التسليم للديف» — بعدها أسند المتخصصين" };
+  }
+
   // يُسمح بأكثر من شخص لنفس التخصص (باك×2 مثلاً) — لكن لا يُكرر نفس الشخص في نفس التخصص
-  const existing = (await repo.specialistList(ticketId)).filter((x) => x.spec_key === specKey && x.status !== "declined");
+  const existing = existingSpecs.filter((x) => x.spec_key === specKey && x.status !== "declined");
   if (existing.some((x) => x.staff_id === staffId)) {
     return { ok: false, error: `${staff.name} مسند بالفعل على تخصص «${spec.label}» في هذا الطلب` };
   }
