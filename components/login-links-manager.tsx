@@ -14,10 +14,12 @@ export function LoginLinksManager({
 }) {
   const [staffId, setStaffId] = useState(staff[0]?.id ?? "");
   const [generatedUrl, setGeneratedUrl] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [sentTo, setSentTo] = useState<string | null>(null);
+  const [busy, setBusy] = useState<"copy" | "email" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const names = Object.fromEntries(staff.map((r) => [r.id, r.name]));
+  const selectedEmail = staff.find((r) => r.id === staffId)?.email ?? "";
 
   return (
     <div className="space-y-4">
@@ -33,19 +35,42 @@ export function LoginLinksManager({
           </select>
         </label>
         <button
-          disabled={!staffId || busy}
+          disabled={!staffId || !!busy}
           onClick={async () => {
-            setBusy(true); setError(null); setGeneratedUrl(null); setCopied(false);
+            setBusy("copy"); setError(null); setGeneratedUrl(null); setSentTo(null); setCopied(false);
             const r = await generateLoginLinkAction(staffId);
-            setBusy(false);
+            setBusy(null);
             if (r.ok && r.url) setGeneratedUrl(r.url);
             else setError(r.error ?? "تعذر إنشاء الرابط");
           }}
           className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-bold text-white hover:bg-indigo-700 disabled:opacity-50"
         >
-          {busy ? "جارٍ الإنشاء…" : "🔗 إنشاء رابط دخول شخصي"}
+          {busy === "copy" ? "جارٍ الإنشاء…" : "🔗 إنشاء رابط (نسخ يدوي)"}
+        </button>
+        <button
+          disabled={!staffId || !!busy}
+          onClick={async () => {
+            setBusy("email"); setError(null); setGeneratedUrl(null); setSentTo(null); setCopied(false);
+            const r = await generateLoginLinkAction(staffId, true);
+            setBusy(null);
+            if (r.ok && r.sent_to) setSentTo(r.sent_to);
+            else setError(r.error ?? "تعذر الإرسال");
+          }}
+          className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-bold text-white hover:bg-emerald-700 disabled:opacity-50"
+          title={`سيُرسل إلى البريد المسجل: ${selectedEmail}`}
+        >
+          {busy === "email" ? "جارٍ الإرسال…" : "📧 إنشاء وإرسال للبريد المسجل"}
         </button>
       </div>
+      <p className="text-xs text-slate-500">
+        الإرسال بالبريد يذهب <b>حصراً</b> إلى البريد المسجل في جدول الموظفين ({selectedEmail || "—"}) — لا يمكن توجيهه لعنوان آخر.
+      </p>
+
+      {sentTo && (
+        <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm font-bold text-emerald-800">
+          ✅ أُرسل رابط الدخول إلى <span dir="ltr">{sentTo}</span> — الرابط لم يُعرض هنا إطلاقاً (وصل لصاحبه فقط)
+        </div>
+      )}
 
       {generatedUrl && (
         <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3">

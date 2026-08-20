@@ -169,7 +169,7 @@ export async function generatePrivateAccessLinkAction(staffId: string) {
 
 // ====== روابط الدخول الشخصية (Magic Links) — دخول كامل بهوية الموظف بدون PIN ======
 // «مدير النظام» مستثنى عمداً: حسابه أخطر من أن يُفتح برابط قابل للتسريب
-export async function generateLoginLinkAction(staffId: string) {
+export async function generateLoginLinkAction(staffId: string, sendByEmail = false) {
   const actor = await requireStaff(["admin"]);
   const repo = await getRepo();
   const target = await repo.staffGet(staffId);
@@ -184,10 +184,40 @@ export async function generateLoginLinkAction(staffId: string) {
   await repo.auditAdd({
     entity_type: "private_access_link", entity_id: link.id, action: "login_link.created",
     actor_staff_id: actor.id, actor_label: actor.name,
-    new_values: { staff_id: target.id, staff_name: target.name, role: target.role },
+    new_values: { staff_id: target.id, staff_name: target.name, role: target.role, sent_by_email: sendByEmail },
   });
   revalidatePath("/staff");
-  return { ok: true, url: `${settings.base_url}/api/auth/magic?token=${token}` };
+  const url = `${settings.base_url}/api/auth/magic?token=${token}`;
+
+  // الإرسال بالبريد: دائماً إلى البريد المسجل في النظام حصراً — لا حقل بريد حر إطلاقاً
+  if (sendByEmail) {
+    if (!isEmail(target.email)) return { ok: false, error: `بريد ${target.name} المسجل غير صالح — صححه من جدول الموظفين أولاً` };
+    const subject = `🔗 رابط دخولك الشخصي — ${settings.app_name}`;
+    const body = `
+      <p>مرحباً <b>${target.name}</b> 👋</p>
+      <p>هذا رابط دخولك الشخصي إلى <b>${settings.app_name}</b> — اضغط عليه فتدخل مباشرة بهويتك وصلاحياتك دون رقم سري:</p>
+      <table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center" style="margin:18px auto">
+        <tr><td bgcolor="#4f46e5" style="border-radius:10px;mso-padding-alt:13px 26px">
+          <a href="${url}" target="_blank" rel="noopener noreferrer"
+             style="display:inline-block;padding:13px 26px;font-family:'Segoe UI',Tahoma,Arial,sans-serif;font-size:15px;font-weight:700;color:#ffffff;text-decoration:none;border-radius:10px">🔓 الدخول إلى النظام</a>
+        </td></tr>
+      </table>
+      <p style="background:#fef2f2;border:1px solid #fecaca;border-radius:10px;padding:12px;font-size:13px;color:#991b1b">
+        ⚠️ هذا الرابط <b>شخصي وسري</b> — لا تعيد توجيهه ولا تشاركه مع أحد إطلاقاً.
+        من فتح الرابط أصبح «أنت» داخل النظام. إن شككت أنه تسرب أبلغ المدير فوراً ليلغيه بضغطة واحدة.
+      </p>
+      <p style="font-size:12px;color:#94a3b8">صالح حتى يُلغى من الإدارة — الجلسة 30 يوماً وكل دخول يُسجل في سجل التدقيق.</p>`;
+    const html = wrapEmail(subject, body, settings);
+    const result = await sendMail({ to: [target.email], cc: [], subject, html }, settings);
+    await repo.emailLogAdd({
+      job_id: null, ticket_id: null, to_addr: target.email, cc_addr: null,
+      provider: result.provider, provider_msg_id: result.msgId, subject, body_html: html,
+      status: result.error ? "failed" : result.provider === "log" ? "logged" : "sent", error: result.error ?? null,
+    });
+    if (result.error) return { ok: false, error: `أُنشئ الرابط لكن تعذر إرسال البريد: ${result.error}` };
+    return { ok: true, sent_to: target.email };
+  }
+  return { ok: true, url };
 }
 
 export async function revokePrivateAccessLinkAction(id: string) {
