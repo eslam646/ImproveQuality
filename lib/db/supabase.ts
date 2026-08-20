@@ -146,6 +146,7 @@ export async function createSupabaseRepo(): Promise<Repo> {
     async privateLinkCreate(input) {
       const row = {
         id: genId("plink"), staff_id: input.staff_id, token_hash: input.token_hash,
+        kind: input.kind ?? "request",
         label: input.label ?? null, active: true, expires_at: null, last_used_at: null,
         created_by: input.created_by ?? null, created_at: nowIso(), revoked_at: null,
       };

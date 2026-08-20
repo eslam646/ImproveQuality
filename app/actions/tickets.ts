@@ -34,7 +34,7 @@ export async function createPrivateRequestAction(formData: FormData) {
   if (token.length < 32) fail("الرابط الخاص غير صالح");
   const repo = await getRepo();
   const link = await repo.privateLinkByHash(hashPrivateToken(token));
-  if (!link) fail("الرابط الخاص غير صالح أو تم إلغاؤه");
+  if (!link || (link.kind ?? "request") !== "request") fail("الرابط الخاص غير صالح أو تم إلغاؤه");
   const requester = await repo.staffGet(link!.staff_id);
   if (!requester || !requester.active || requester.role !== "support") fail("حساب مدخل البيانات غير متاح");
 

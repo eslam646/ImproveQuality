@@ -28,7 +28,7 @@ export interface Repo {
   staffUpdate(id: string, patch: Partial<Staff>): Promise<void>;
   staffSetPin(id: string, pinHash: string): Promise<void>;
 
-  privateLinkCreate(input: { staff_id: string; token_hash: string; label?: string | null; created_by?: string | null }): Promise<PrivateAccessLink>;
+  privateLinkCreate(input: { staff_id: string; token_hash: string; kind?: "request" | "login"; label?: string | null; created_by?: string | null }): Promise<PrivateAccessLink>;
   privateLinkByHash(tokenHash: string): Promise<PrivateAccessLink | null>;
   privateLinksList(staffId?: string): Promise<PrivateAccessLink[]>;
   privateLinkTouch(id: string): Promise<void>;

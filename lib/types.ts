@@ -144,6 +144,7 @@ export interface PrivateAccessLink {
   id: string;
   staff_id: string;
   token_hash: string;
+  kind?: "request" | "login"; // request: نموذج طلب فقط — login: دخول كامل بهوية الموظف
   label: string | null;
   active: boolean;
   expires_at: string | null;

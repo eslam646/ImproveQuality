@@ -167,6 +167,29 @@ export async function generatePrivateAccessLinkAction(staffId: string) {
   return { ok: true, url: `${settings.base_url}/request/${token}` };
 }
 
+// ====== روابط الدخول الشخصية (Magic Links) — دخول كامل بهوية الموظف بدون PIN ======
+// «مدير النظام» مستثنى عمداً: حسابه أخطر من أن يُفتح برابط قابل للتسريب
+export async function generateLoginLinkAction(staffId: string) {
+  const actor = await requireStaff(["admin"]);
+  const repo = await getRepo();
+  const target = await repo.staffGet(staffId);
+  if (!target || !target.active) return { ok: false, error: "الموظف غير موجود أو موقوف" };
+  if (target.role === "admin") return { ok: false, error: "مدير النظام لا يدخل برابط — بالرقم السري فقط (حماية للنظام كله)" };
+  const token = generatePrivateToken();
+  const link = await repo.privateLinkCreate({
+    staff_id: target.id, token_hash: hashPrivateToken(token), kind: "login",
+    label: `رابط دخول ${target.name}`, created_by: actor.id,
+  });
+  const settings = await repo.settingsGet();
+  await repo.auditAdd({
+    entity_type: "private_access_link", entity_id: link.id, action: "login_link.created",
+    actor_staff_id: actor.id, actor_label: actor.name,
+    new_values: { staff_id: target.id, staff_name: target.name, role: target.role },
+  });
+  revalidatePath("/staff");
+  return { ok: true, url: `${settings.base_url}/api/auth/magic?token=${token}` };
+}
+
 export async function revokePrivateAccessLinkAction(id: string) {
   const actor = await requireActionPermission("manage_private_links");
   const repo = await getRepo();

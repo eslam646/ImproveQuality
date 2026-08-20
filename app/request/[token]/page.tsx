@@ -18,7 +18,8 @@ export default async function PrivateRequestPage({
   const { token } = await params;
   const sp = await searchParams;
   const repo = await getRepo();
-  const link = token ? await repo.privateLinkByHash(hashPrivateToken(token)) : null;
+  const rawLink = token ? await repo.privateLinkByHash(hashPrivateToken(token)) : null;
+  const link = rawLink && (rawLink.kind ?? "request") === "request" ? rawLink : null;
   if (!link) notFound();
   const requester = await repo.staffGet(link.staff_id);
   if (!requester || !requester.active || requester.role !== "support") notFound();

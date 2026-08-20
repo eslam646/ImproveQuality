@@ -124,6 +124,7 @@ export function createSqliteRepo(): Repo {
   try { db.exec("ALTER TABLE tickets ADD COLUMN dev_started_at TEXT"); } catch { /* موجود */ }
   try { db.exec("ALTER TABLE tickets ADD COLUMN test_started_at TEXT"); } catch { /* موجود */ }
   try { db.exec("ALTER TABLE tickets ADD COLUMN reminders_sent TEXT"); } catch { /* موجود */ }
+  try { db.exec("ALTER TABLE private_access_links ADD COLUMN kind TEXT NOT NULL DEFAULT 'request'"); } catch { /* موجود */ }
   try { db.exec("ALTER TABLE tickets ADD COLUMN is_urgent INTEGER NOT NULL DEFAULT 0"); } catch { /* موجود */ }
   try { db.exec("ALTER TABLE tickets ADD COLUMN title TEXT"); } catch { /* موجود */ }
   try { db.exec("ALTER TABLE tickets ADD COLUMN request_type TEXT NOT NULL DEFAULT 'issue'"); } catch { /* موجود */ }
@@ -316,13 +317,14 @@ export function createSqliteRepo(): Repo {
     async privateLinkCreate(input) {
       const row: PrivateAccessLink = {
         id: genId("plink"), staff_id: input.staff_id, token_hash: input.token_hash,
+        kind: input.kind ?? "request",
         label: input.label ?? null, active: true, expires_at: null, last_used_at: null,
         created_by: input.created_by ?? null, created_at: nowIso(), revoked_at: null,
       };
       db.prepare(`INSERT INTO private_access_links
-        (id,staff_id,token_hash,label,active,expires_at,last_used_at,created_by,created_at,revoked_at)
-        VALUES (?,?,?,?,1,?,?,?,?,?)`)
-        .run(row.id, row.staff_id, row.token_hash, row.label, row.expires_at, row.last_used_at, row.created_by, row.created_at, row.revoked_at);
+        (id,staff_id,token_hash,kind,label,active,expires_at,last_used_at,created_by,created_at,revoked_at)
+        VALUES (?,?,?,?,?,1,?,?,?,?,?)`)
+        .run(row.id, row.staff_id, row.token_hash, row.kind, row.label, row.expires_at, row.last_used_at, row.created_by, row.created_at, row.revoked_at);
       return row;
     },
     async privateLinkByHash(tokenHash) {
