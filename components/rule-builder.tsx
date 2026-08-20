@@ -17,6 +17,7 @@ const REF_OPTIONS = [
   { v: "ticket_managers", l: "مديرو كل أطراف الطلب" },
   { v: "client", l: "بريد مقدم الطلب المسجل بالتذكرة" },
   { v: "previous_assignee", l: "المكلَّف السابق (الذي سُحب منه التكليف)" },
+  { v: "event_target", l: "الشخص المعني بالحدث (المتخصص المسند/المتأخر)" },
 ] as const;
 
 type RecState = { refs: string[]; roles: string[]; staff: string[]; emails: string };
@@ -149,6 +150,11 @@ export function RuleBuilder({ initial, templates, staff }: {
             { v: "developer.accepted", l: "✅ عند قبول المطور للتكليف" },
             { v: "developer.declined", l: "❌ عند رفض المطور للتكليف (بسبب)" },
             { v: "assignment.revoked", l: "↩️ عند سحب التكليف من شخص (إعادة إسناد)" },
+            { v: "spec.assigned", l: "🧩 عند تكليف متخصص (باك/فرونت/UX)" },
+            { v: "spec.accepted", l: "✅ عند قبول المتخصص لجزئه" },
+            { v: "spec.declined", l: "❌ عند رفض المتخصص لجزئه (بسبب)" },
+            { v: "spec.ready", l: "🏁 عند إعلان متخصص جاهزية جزئه" },
+            { v: "spec.overdue", l: "🔴 متخصص تجاوز تقديره ولم يعلن الجاهزية" },
             { v: "urgent.withdrawal", l: "🙅 عند الاعتذار عن الدعم الفوري بعد القبول" },
             { v: "urgent.progress", l: "🚨 عند تحديث موقف الدعم الفوري (مازلت أعمل / انتهيت)" },
             { v: "ticket.rejected", l: "❌ عند رفض الطلب نهائياً (بسبب)" },

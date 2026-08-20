@@ -1,8 +1,8 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type { Repo, TicketFilter } from "./index";
-import type { AuditEntry, Client, CustomFieldCfg, EmailLog, EstimationReminderCfg, FormFieldCfg, Job, Meeting, MeetingParticipant, PermKey, PrivateAccessLink, Role, RolePermissions, Settings, Staff, Ticket, TicketAssignment, TicketEvent, TrackPageCfg, UrgentFormFieldCfg, UserPermissionOverrides } from "../types";
+import type { AuditEntry, Client, CustomFieldCfg, DevSpecialization, EmailLog, EstimationReminderCfg, FormFieldCfg, Job, Meeting, MeetingParticipant, PermKey, PrivateAccessLink, Role, RolePermissions, Settings, Staff, Ticket, TicketAssignment, TicketSpecialist, TicketEvent, TrackPageCfg, UrgentFormFieldCfg, UserPermissionOverrides } from "../types";
 import { DEFAULT_FORM_FIELDS, DEFAULT_ROLE_PERMISSIONS, DEFAULT_TRACK_CFG,
-  DEFAULT_ESTIMATION_REMINDERS, DEFAULT_URGENT_FORM_FIELDS } from "../types";
+  DEFAULT_ESTIMATION_REMINDERS, DEFAULT_DEV_SPECIALIZATIONS, DEFAULT_URGENT_FORM_FIELDS } from "../types";
 import { SEED_RULES, SEED_STAFF, SEED_TEMPLATES, SEED_TICKETS } from "../seed";
 import { genId, genTicketCode, nowIso } from "../util";
 
@@ -93,6 +93,14 @@ export async function createSupabaseRepo(): Promise<Repo> {
     if (m.track_cfg) {
       try { track_cfg = { ...DEFAULT_TRACK_CFG, ...(JSON.parse(m.track_cfg) as Partial<TrackPageCfg>) }; } catch { /* الافتراضي */ }
     }
+    // تخصصات التطوير (باك/فرونت/UX) — يحددها الأدمن
+    let dev_specializations: DevSpecialization[] = DEFAULT_DEV_SPECIALIZATIONS;
+    if (m.dev_specializations) {
+      try {
+        const saved = JSON.parse(m.dev_specializations) as DevSpecialization[];
+        if (Array.isArray(saved) && saved.length) dev_specializations = saved.filter((x) => x && typeof x.key === "string" && typeof x.label === "string");
+      } catch { /* الافتراضي */ }
+    }
     // تذكيرات التقدير الزمني — قابلة للتحكم بالكامل من الإعدادات
     let estimation_reminders: EstimationReminderCfg = DEFAULT_ESTIMATION_REMINDERS;
     if (m.estimation_reminders) {
@@ -114,6 +122,7 @@ export async function createSupabaseRepo(): Promise<Repo> {
       custom_fields,
       track_cfg,
       estimation_reminders,
+      dev_specializations,
     } as Settings;
   };
 
@@ -189,6 +198,8 @@ export async function createSupabaseRepo(): Promise<Repo> {
       if (patch.user_permissions !== undefined) rows.push({ key: "user_permissions", value: JSON.stringify(patch.user_permissions) });
       if (patch.custom_fields !== undefined) rows.push({ key: "custom_fields", value: JSON.stringify(patch.custom_fields) });
       if (patch.track_cfg !== undefined) rows.push({ key: "track_cfg", value: JSON.stringify(patch.track_cfg) });
+      if (patch.estimation_reminders !== undefined) rows.push({ key: "estimation_reminders", value: JSON.stringify(patch.estimation_reminders) });
+      if (patch.dev_specializations !== undefined) rows.push({ key: "dev_specializations", value: JSON.stringify(patch.dev_specializations) });
       if (rows.length) must(await sb.from("settings").upsert(rows));
     },
     async settingsValueGet(key) {
@@ -323,6 +334,34 @@ export async function createSupabaseRepo(): Promise<Repo> {
     },
     async assignmentList(ticketId) {
       return (must(await sb.from("ticket_assignments").select("*").eq("ticket_id", ticketId).order("assigned_at", { ascending: false })) as TicketAssignment[]) ?? [];
+    },
+
+    async specialistAdd(sp) {
+      await sb.from("ticket_specialists").update({ is_current: false })
+        .eq("ticket_id", sp.ticket_id).eq("spec_key", sp.spec_key).eq("is_current", true);
+      const row = {
+        id: genId("spc"), ticket_id: sp.ticket_id, spec_key: sp.spec_key, spec_label: sp.spec_label,
+        staff_id: sp.staff_id, staff_name: sp.staff_name, status: "pending",
+        est_days: sp.est_days ?? null, est_hours: sp.est_hours ?? null,
+        started_at: null, ready_at: null, decline_reason: null, reminders_sent: null,
+        assigned_by: sp.assigned_by ?? null, assigned_at: nowIso(), responded_at: null, is_current: true,
+      };
+      const { data } = await sb.from("ticket_specialists").insert(row).select().single();
+      return data as TicketSpecialist;
+    },
+    async specialistList(ticketId) {
+      return (must(await sb.from("ticket_specialists").select("*").eq("ticket_id", ticketId).eq("is_current", true).order("assigned_at")) as TicketSpecialist[]) ?? [];
+    },
+    async specialistGet(id) {
+      const { data } = await sb.from("ticket_specialists").select("*").eq("id", id).maybeSingle();
+      return (data as TicketSpecialist) ?? null;
+    },
+    async specialistUpdate(id, patch) {
+      const { data } = await sb.from("ticket_specialists").update(patch).eq("id", id).select().maybeSingle();
+      return (data as TicketSpecialist) ?? null;
+    },
+    async specialistRemove(id) {
+      await sb.from("ticket_specialists").update({ is_current: false }).eq("id", id);
     },
 
     async meetingCreate(m) {

@@ -427,3 +427,53 @@ export async function canManageGuard() {
   const actor = await requireStaff();
   return canManage(actor);
 }
+
+// ═══════════ المتخصصون (باك/فرونت/UX) ═══════════
+// إسناد متخصص — بصلاحية «إسناد / تغيير المطور»
+export async function assignSpecialistAction(formData: FormData) {
+  const actor = await requireActionPermission("assign_developer");
+  const code = String(formData.get("code") ?? "");
+  const specKey = String(formData.get("spec_key") ?? "");
+  const staffId = String(formData.get("staff_id") ?? "");
+  const d = parseFloat(String(formData.get("est_days") ?? ""));
+  const h = parseFloat(String(formData.get("est_hours") ?? ""));
+  const repo = await getRepo();
+  const t = await repo.ticketByCode(code);
+  if (!t) redirect("/dashboard");
+  const { assignSpecialistOp } = await import("@/lib/ops");
+  const r = await assignSpecialistOp(
+    t.id, specKey, staffId,
+    { days: Number.isFinite(d) && d >= 0 ? d : null, hours: Number.isFinite(h) && h >= 0 ? h : null },
+    labelOf(actor), actor.id,
+  );
+  revalidatePath(`/tickets/${code}`);
+  redirect(`/tickets/${code}?${r.ok ? `ok=${enc("تم إسناد المتخصص وإرسال التكليف ✓")}` : `err=${enc(r.error ?? "تعذر الإسناد")}`}`);
+}
+
+// قرار المتخصص: قبول / رفض
+export async function respondSpecialistAction(formData: FormData) {
+  const actor = await requireStaff(["developer", "admin"]);
+  const code = String(formData.get("code") ?? "");
+  const specialistId = String(formData.get("specialist_id") ?? "");
+  const decision = String(formData.get("decision") ?? "") as "accepted" | "declined";
+  const reason = String(formData.get("reason") ?? "").trim();
+  if (!["accepted", "declined"].includes(decision)) redirect(`/tickets/${code}?err=${enc("قرار غير صحيح")}`);
+  const { respondSpecialistOp } = await import("@/lib/ops");
+  const r = await respondSpecialistOp(specialistId, { staff_id: actor.id, name: actor.name }, decision, reason || undefined);
+  revalidatePath(`/tickets/${code}`);
+  redirect(`/tickets/${code}?${r.ok ? `ok=${enc(decision === "accepted" ? "قبلت التكليف وبدأ عدّاد تقديرك ⏱️" : "سُجل رفضك وأُبلغت الإدارة بالسبب ✓")}` : `err=${enc(r.error ?? "تعذر التسجيل")}`}`);
+}
+
+// المتخصص يعلن الجاهزية — ولو الجميع جاهز تتحول التاسك «جاهز للاختبار»
+export async function specialistReadyAction(formData: FormData) {
+  const actor = await requireStaff(["developer", "admin"]);
+  const code = String(formData.get("code") ?? "");
+  const specialistId = String(formData.get("specialist_id") ?? "");
+  const note = String(formData.get("note") ?? "").trim();
+  const { specialistReadyOp } = await import("@/lib/ops");
+  const r = await specialistReadyOp(specialistId, { staff_id: actor.id, name: actor.name }, note || undefined);
+  revalidatePath(`/tickets/${code}`);
+  redirect(`/tickets/${code}?${r.ok
+    ? `ok=${enc(r.allReady ? "🎉 كل التخصصات جاهزة — تحولت التاسك لجاهز للاختبار وأُبلغ التيست" : "سُجلت جاهزية جزئك ✓ — التاسك تتحول للاختبار بعد جاهزية الباقين")}`
+    : `err=${enc(r.error ?? "تعذر التسجيل")}`}`);
+}

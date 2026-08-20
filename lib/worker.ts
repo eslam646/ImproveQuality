@@ -24,6 +24,7 @@ export async function processAll(): Promise<ProcessReport> {
   const remindersEnqueued = await enqueueStaleReminders();
   // تذكيرات التقدير الزمني (منتصف/قبل النهاية/تأخير) — Idempotent ولا تفشل الدورة كلها
   try { await processEstimationReminders(); } catch (e) { console.error("estimation reminders:", e); }
+  try { const { processSpecialistReminders } = await import("./estimation-reminders"); await processSpecialistReminders(); } catch (e) { console.error("specialist reminders:", e); }
 
   const jobs = await repo.jobsDue(25);
   const report: ProcessReport = { remindersEnqueued, processed: 0, sent: 0, retried: 0, dead: 0, skipped: 0 };
@@ -61,7 +62,11 @@ async function executeJob(job: Job, settings: Settings): Promise<void> {
   if (!ticket) throw new Error("التذكرة غير موجودة");
 
   if (action.type === "send_email") {
-    const extraResolve = { previous_assignee_id: (extra.custom as Record<string, string> | null | undefined)?.previous_assignee_id ?? null };
+    const custom = extra.custom as Record<string, string> | null | undefined;
+    const extraResolve = {
+      previous_assignee_id: custom?.previous_assignee_id ?? null,
+      event_target_id: custom?.specialist_id ?? custom?.event_target_id ?? null,
+    };
     const toRes = await resolveRecipients(repo, ticket, action.to, extraResolve);
     const ccRes = await resolveRecipients(repo, ticket, action.cc, extraResolve);
     // منفّذ الفعل لا يستلم إيميلاً عن فعله هو (مثلاً: التيستر الذي قَبِل لا يصله «قَبِل التيستر»)
@@ -109,7 +114,8 @@ async function executeJob(job: Job, settings: Settings): Promise<void> {
   if (action.type === "notify") {
     const vars = { ...templateVars(ticket, settings, extra), ...(extra.custom ?? {}) };
     const msg = renderTemplate(action.message, vars, { htmlEscape: false });
-    const res = await resolveRecipients(repo, ticket, action.to, { previous_assignee_id: (extra.custom as Record<string, string> | null | undefined)?.previous_assignee_id ?? null });
+    const c2 = extra.custom as Record<string, string> | null | undefined;
+    const res = await resolveRecipients(repo, ticket, action.to, { previous_assignee_id: c2?.previous_assignee_id ?? null, event_target_id: c2?.specialist_id ?? c2?.event_target_id ?? null });
     for (const s of res.staff) {
       if (s.id === (extra.exclude_staff_id ?? null)) continue;
       await repo.notifyAdd({ staff_id: s.id, ticket_id: ticket.id, message: msg });

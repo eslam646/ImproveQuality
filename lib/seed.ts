@@ -177,6 +177,34 @@ export const SEED_TEMPLATES: EmailTemplate[] = [
     created_at: nowIso(), updated_at: nowIso(),
   },
   {
+    id: "tmpl-spec-assigned", name: "تكليف متخصص (باك/فرونت/UX)",
+    subject: "🧩 أُسند إليك جزء «{{spec_label}}» في الطلب {{code}}",
+    body_html: `مرحباً <b>{{specialist_name}}</b>، تم إسنادك متخصصاً لجزء <b>{{spec_label}}</b> في الطلب أدناه. افتح الطلب واقبل التكليف أو ارفضه بسبب — قبولك يبدأ عدّاد تقديرك.`,
+    blocks: { ...DEFAULT_TEMPLATE_BLOCKS, note: false, update_button: false },
+    created_at: nowIso(), updated_at: nowIso(),
+  },
+  {
+    id: "tmpl-spec-decision", name: "قرار المتخصص (قبول / رفض)",
+    subject: "{{spec_label}}: قرار {{actor_name}} في الطلب {{code}}",
+    body_html: `<b>{{actor_name}}</b> ({{spec_label}}) رد على التكليف.<br>{{reason}}`,
+    blocks: { ...DEFAULT_TEMPLATE_BLOCKS, details: false, note: false, update_button: false },
+    created_at: nowIso(), updated_at: nowIso(),
+  },
+  {
+    id: "tmpl-spec-ready", name: "متخصص أعلن الجاهزية",
+    subject: "✅ «{{spec_label}}» جاهز — {{specialist_name}} أنهى جزءه في {{code}}",
+    body_html: `<b>{{specialist_name}}</b> أنهى جزء <b>{{spec_label}}</b>.<br>{{note}}<br><b>المتبقي قبل تحويل التاسك لجاهز للاختبار:</b> {{pending_specs}}`,
+    blocks: { ...DEFAULT_TEMPLATE_BLOCKS, details: false, note: false, update_button: false },
+    created_at: nowIso(), updated_at: nowIso(),
+  },
+  {
+    id: "tmpl-spec-overdue", name: "متخصص متأخر — لم يعلن الجاهزية",
+    subject: "🔴 جزء «{{spec_label}}» متأخر عند {{specialist_name}} بـ{{overdue_hours}} ساعة — {{code}}",
+    body_html: `مرحباً <b>{{specialist_name}}</b> 🔴<br>جزء <b>{{spec_label}}</b> تجاوز تقديرك الزمني بـ<b>{{overdue_hours}} ساعة</b> ولم تعلن جاهزيته بعد — باقي التخصصات والتاسك كلها متوقفة عليك. أعلن الجاهزية أو اكتب سبب التأخير على الطلب.`,
+    blocks: { ...DEFAULT_TEMPLATE_BLOCKS, details: false, note: false, update_button: true },
+    created_at: nowIso(), updated_at: nowIso(),
+  },
+  {
     id: "tmpl-note-added", name: "ملاحظة / رد جديد على الطلب",
     subject: "💬 ملاحظة جديدة على {{code}} — {{actor_name}}",
     body_html: `أضاف <b>{{actor_name}}</b> ملاحظة على الطلب:<br><div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:12px;margin-top:8px">{{note}}</div>`,
@@ -327,6 +355,51 @@ export const SEED_RULES: AutomationRule[] = [
     actions: [
       { type: "send_email", to: [{ kind: "ref", ref: "previous_assignee" }], cc: [], template_id: "tmpl-assignment-revoked" },
       { type: "notify", to: [{ kind: "ref", ref: "previous_assignee" }], message: "↩️ سُحب تكليفك بـ{{code}} — أُسند إلى {{new_assignee}}" },
+    ],
+    enabled: 1, run_count: 0, created_at: nowIso(),
+  },
+  // ═══ قواعد المتخصصين (باك/فرونت/UX) ═══
+  {
+    id: "rule-spec-assigned", name: "تكليف متخصص → إيميل التكليف له", trigger_type: "spec.assigned", trigger_field: null,
+    conditions: [],
+    actions: [
+      { type: "send_email", to: [{ kind: "ref", ref: "event_target" }], cc: [], template_id: "tmpl-spec-assigned" },
+      { type: "notify", to: [{ kind: "ref", ref: "event_target" }], message: "🧩 أُسند إليك جزء {{spec_label}} في {{code}}" },
+    ],
+    enabled: 1, run_count: 0, created_at: nowIso(),
+  },
+  {
+    id: "rule-spec-accepted", name: "قبول المتخصص → إبلاغ المدخل والإدارة", trigger_type: "spec.accepted", trigger_field: null,
+    conditions: [],
+    actions: [
+      { type: "send_email", to: [{ kind: "ref", ref: "creator" }], cc: [{ kind: "role", role: "admin" }], template_id: "tmpl-spec-decision" },
+    ],
+    enabled: 1, run_count: 0, created_at: nowIso(),
+  },
+  {
+    id: "rule-spec-declined", name: "رفض المتخصص → إبلاغ المدخل والإدارة بالسبب", trigger_type: "spec.declined", trigger_field: null,
+    conditions: [],
+    actions: [
+      { type: "send_email", to: [{ kind: "ref", ref: "creator" }], cc: [{ kind: "role", role: "admin" }], template_id: "tmpl-spec-decision" },
+      { type: "notify", to: [{ kind: "role", role: "admin" }], message: "❌ {{actor_name}} رفض جزء {{spec_label}} في {{code}}: {{reason}}" },
+    ],
+    enabled: 1, run_count: 0, created_at: nowIso(),
+  },
+  {
+    id: "rule-spec-ready", name: "متخصص أعلن الجاهزية → إبلاغ أطراف الطلب", trigger_type: "spec.ready", trigger_field: null,
+    conditions: [],
+    actions: [
+      { type: "send_email", to: [{ kind: "ref", ref: "ticket_parties" }], cc: [{ kind: "role", role: "admin" }], template_id: "tmpl-spec-ready" },
+      { type: "notify", to: [{ kind: "ref", ref: "ticket_parties" }], message: "✅ {{spec_label}} جاهز في {{code}} — المتبقي: {{pending_specs}}" },
+    ],
+    enabled: 1, run_count: 0, created_at: nowIso(),
+  },
+  {
+    id: "rule-spec-overdue", name: "متخصص متأخر (لم يعلن الجاهزية) → هو + الإدارة", trigger_type: "spec.overdue", trigger_field: null,
+    conditions: [],
+    actions: [
+      { type: "send_email", to: [{ kind: "ref", ref: "event_target" }], cc: [{ kind: "role", role: "admin" }], template_id: "tmpl-spec-overdue" },
+      { type: "notify", to: [{ kind: "ref", ref: "event_target" }], message: "🔴 جزء {{spec_label}} متأخر عندك في {{code}}" },
     ],
     enabled: 1, run_count: 0, created_at: nowIso(),
   },

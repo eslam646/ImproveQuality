@@ -4,7 +4,8 @@ import { getRepo } from "@/lib/db";
 import { requireStaff, permissionsForStaff } from "@/lib/auth";
 import {
   addNoteAction, assignDeveloperAction, assignTesterAction,
-  declineAssignmentAction, respondToAssignmentAction, setEstimationAction,
+  assignSpecialistAction, declineAssignmentAction, respondSpecialistAction,
+  respondToAssignmentAction, setEstimationAction, specialistReadyAction,
 } from "@/app/actions/tickets";
 import { Badge, Button, Card, Field, Msg, selectCls, inputCls } from "@/components/ui";
 import { allowedTransitions, ALL_STATUSES, ASSIGNMENT_STATUS_LABELS, REQUEST_TYPE_LABELS, ROLE_LABELS, STATUS_COLORS, STATUS_LABELS, urgentStatusInfo } from "@/lib/labels";
@@ -72,13 +73,14 @@ export default async function TicketDetailsPage({
   const testers = staffAll.filter((s) => s.role === "tester");
   const devs = staffAll.filter((s) => s.role === "developer");
 
-  const [events, attachments, emailLog, auditEntries, meetings, assignments] = await Promise.all([
+  const [events, attachments, emailLog, auditEntries, meetings, assignments, specialists] = await Promise.all([
     repo.eventList(ticket.id),
     repo.attachmentList(ticket.id),
     perms.emails ? repo.emailLogList(1, 10, ticket.id) : Promise.resolve({ rows: [], total: 0 }),
     perms.view_audit ? repo.auditList("ticket", ticket.id) : Promise.resolve([]),
     (perms.manage_meetings || perms.join_meetings) ? repo.meetingList(ticket.id) : Promise.resolve([]),
     ticket.is_urgent ? repo.assignmentList(ticket.id) : Promise.resolve([]),
+    !ticket.is_urgent ? repo.specialistList(ticket.id) : Promise.resolve([]),
   ]);
 
   const isAssignedTester = ticket.tester_id === actor.id;
@@ -238,6 +240,92 @@ export default async function TicketDetailsPage({
                   </div>
                 )}
               </div>
+            </Card>
+          )}
+
+          {/* المتخصصون: باك / فرونت / UX — كل تخصص شخص وتقدير وعدّاد مستقل */}
+          {!ticket.is_urgent && (specialists.length > 0 || canAssignDev) && (
+            <Card title="🧩 فريق التطوير حسب التخصص">
+              {specialists.length > 0 && (
+                <ul className="mb-4 space-y-2">
+                  {specialists.map((sp) => {
+                    const mine = sp.staff_id === actor.id;
+                    const statusBadge = sp.status === "ready"
+                      ? <Badge color="bg-emerald-100 text-emerald-800">✅ جاهز</Badge>
+                      : sp.status === "accepted"
+                        ? <Badge color="bg-blue-100 text-blue-800">🔄 يعمل عليه (العدّاد يعد)</Badge>
+                        : sp.status === "declined"
+                          ? <Badge color="bg-rose-100 text-rose-800">❌ رفض — أعد الإسناد</Badge>
+                          : <Badge color="bg-amber-100 text-amber-800">⏳ بانتظار الرد</Badge>;
+                    return (
+                      <li key={sp.id} className="rounded-xl border border-slate-200 p-3">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div>
+                            <span className="rounded-full bg-indigo-100 px-2.5 py-0.5 text-xs font-bold text-indigo-800">{sp.spec_label}</span>
+                            <b className="mx-2">{sp.staff_name}</b>
+                            {statusBadge}
+                          </div>
+                          <span className="text-xs text-slate-500">
+                            التقدير: {(sp.est_days || sp.est_hours) ? `${sp.est_days ? `${sp.est_days} يوم` : ""}${sp.est_days && sp.est_hours ? " + " : ""}${sp.est_hours ? `${sp.est_hours} ساعة` : ""}` : "—"}
+                            {sp.ready_at ? ` · جاهز منذ ${fmtDate(sp.ready_at)}` : ""}
+                          </span>
+                        </div>
+                        {sp.decline_reason && <p className="mt-1 text-xs text-rose-600">سبب الرفض: {sp.decline_reason}</p>}
+
+                        {mine && sp.status === "pending" && (
+                          <div className="mt-3 grid gap-2 md:grid-cols-2">
+                            <form action={respondSpecialistAction}>
+                              <input type="hidden" name="code" value={ticket.code} />
+                              <input type="hidden" name="specialist_id" value={sp.id} />
+                              <input type="hidden" name="decision" value="accepted" />
+                              <Button type="submit">✅ أقبل جزء {sp.spec_label} — يبدأ عدّادي</Button>
+                            </form>
+                            <form action={respondSpecialistAction} className="flex gap-2">
+                              <input type="hidden" name="code" value={ticket.code} />
+                              <input type="hidden" name="specialist_id" value={sp.id} />
+                              <input type="hidden" name="decision" value="declined" />
+                              <input name="reason" required minLength={3} placeholder="سبب الرفض (إجباري)…" className={`${inputCls} flex-1`} />
+                              <Button type="submit" variant="secondary">❌ رفض</Button>
+                            </form>
+                          </div>
+                        )}
+                        {mine && sp.status === "accepted" && (
+                          <form action={specialistReadyAction} className="mt-3 flex flex-wrap gap-2">
+                            <input type="hidden" name="code" value={ticket.code} />
+                            <input type="hidden" name="specialist_id" value={sp.id} />
+                            <input name="note" placeholder="ملاحظة اختيارية عن التسليم…" className={`${inputCls} min-w-48 flex-1`} />
+                            <Button type="submit">✅ جزئي جاهز — تسليم {sp.spec_label}</Button>
+                          </form>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+              {specialists.filter((x) => x.status !== "declined").length > 0 && (
+                <p className="mb-3 rounded-lg bg-indigo-50 px-3 py-2 text-xs text-indigo-700">
+                  🎯 التاسك تتحول «جاهز للاختبار» تلقائياً عندما يعلن <b>كل</b> المتخصصين جاهزيتهم — الجاهز انتهى دوره، والمتأخر عن تقديره يصله إيميل تأخير باسمه.
+                </p>
+              )}
+              {canAssignDev && settings.dev_specializations.filter((x) => x.active).length > 0 && (
+                <form action={assignSpecialistAction} className="flex flex-wrap items-end gap-2 rounded-xl border border-indigo-100 bg-indigo-50/40 p-3">
+                  <input type="hidden" name="code" value={ticket.code} />
+                  <label className="text-sm"><span className="mb-1 block text-xs font-bold text-slate-600">التخصص</span>
+                    <select name="spec_key" required className={selectCls}>
+                      {settings.dev_specializations.filter((x) => x.active).map((x) => <option key={x.key} value={x.key}>{x.label}</option>)}
+                    </select>
+                  </label>
+                  <label className="text-sm"><span className="mb-1 block text-xs font-bold text-slate-600">المطور</span>
+                    <select name="staff_id" required defaultValue="" className={selectCls}>
+                      <option value="" disabled>اختر…</option>
+                      {devs.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+                    </select>
+                  </label>
+                  <input name="est_days" type="number" min="0" step="0.5" placeholder="تقديره: أيام" className={`${inputCls} w-28`} />
+                  <input name="est_hours" type="number" min="0" step="1" placeholder="ساعات" className={`${inputCls} w-24`} />
+                  <Button type="submit">🧩 إسناد التخصص</Button>
+                </form>
+              )}
             </Card>
           )}
 

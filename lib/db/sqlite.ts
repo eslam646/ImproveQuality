@@ -4,10 +4,10 @@ import path from "path";
 import type { Repo, TicketFilter } from "./index";
 import type {
   AuditEntry, AutomationRule, Attachment, Client, CustomFieldCfg, EmailLog, EmailTemplate, FormFieldCfg, Job, Meeting, MeetingParticipant, Notification,
-  EstimationReminderCfg, PermKey, PrivateAccessLink, Role, RolePermissions, Settings, Staff, Ticket, TicketAssignment, TicketEvent, TrackPageCfg, UrgentFormFieldCfg, UserPermissionOverrides,
+  DevSpecialization, EstimationReminderCfg, PermKey, PrivateAccessLink, TicketSpecialist, Role, RolePermissions, Settings, Staff, Ticket, TicketAssignment, TicketEvent, TrackPageCfg, UrgentFormFieldCfg, UserPermissionOverrides,
 } from "../types";
 import { DEFAULT_FORM_FIELDS, DEFAULT_ROLE_PERMISSIONS, DEFAULT_TRACK_CFG,
-  DEFAULT_ESTIMATION_REMINDERS, DEFAULT_URGENT_FORM_FIELDS } from "../types";
+  DEFAULT_ESTIMATION_REMINDERS, DEFAULT_DEV_SPECIALIZATIONS, DEFAULT_URGENT_FORM_FIELDS } from "../types";
 import { SEED_RULES, SEED_STAFF, SEED_TEMPLATES, SEED_TICKETS } from "../seed";
 import { genId, genTicketCode, nowIso } from "../util";
 
@@ -125,6 +125,14 @@ export function createSqliteRepo(): Repo {
   try { db.exec("ALTER TABLE tickets ADD COLUMN test_started_at TEXT"); } catch { /* موجود */ }
   try { db.exec("ALTER TABLE tickets ADD COLUMN reminders_sent TEXT"); } catch { /* موجود */ }
   try { db.exec("ALTER TABLE private_access_links ADD COLUMN kind TEXT NOT NULL DEFAULT 'request'"); } catch { /* موجود */ }
+  db.exec(`CREATE TABLE IF NOT EXISTS ticket_specialists (
+    id TEXT PRIMARY KEY, ticket_id TEXT NOT NULL, spec_key TEXT NOT NULL, spec_label TEXT NOT NULL,
+    staff_id TEXT NOT NULL, staff_name TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending', est_days REAL, est_hours REAL,
+    started_at TEXT, ready_at TEXT, decline_reason TEXT, reminders_sent TEXT,
+    assigned_by TEXT, assigned_at TEXT NOT NULL, responded_at TEXT, is_current INTEGER NOT NULL DEFAULT 1
+  );
+  CREATE INDEX IF NOT EXISTS idx_specialists_ticket ON ticket_specialists(ticket_id, is_current);`);
   try { db.exec("ALTER TABLE tickets ADD COLUMN is_urgent INTEGER NOT NULL DEFAULT 0"); } catch { /* موجود */ }
   try { db.exec("ALTER TABLE tickets ADD COLUMN title TEXT"); } catch { /* موجود */ }
   try { db.exec("ALTER TABLE tickets ADD COLUMN request_type TEXT NOT NULL DEFAULT 'issue'"); } catch { /* موجود */ }
@@ -262,6 +270,14 @@ export function createSqliteRepo(): Repo {
     if (m.track_cfg) {
       try { track_cfg = { ...DEFAULT_TRACK_CFG, ...(JSON.parse(m.track_cfg) as Partial<TrackPageCfg>) }; } catch { /* الافتراضي */ }
     }
+    // تخصصات التطوير (باك/فرونت/UX) — يحددها الأدمن
+    let dev_specializations: DevSpecialization[] = DEFAULT_DEV_SPECIALIZATIONS;
+    if (m.dev_specializations) {
+      try {
+        const saved = JSON.parse(m.dev_specializations) as DevSpecialization[];
+        if (Array.isArray(saved) && saved.length) dev_specializations = saved.filter((x) => x && typeof x.key === "string" && typeof x.label === "string");
+      } catch { /* الافتراضي */ }
+    }
     // تذكيرات التقدير الزمني — قابلة للتحكم بالكامل من الإعدادات
     let estimation_reminders: EstimationReminderCfg = DEFAULT_ESTIMATION_REMINDERS;
     if (m.estimation_reminders) {
@@ -283,6 +299,7 @@ export function createSqliteRepo(): Repo {
       custom_fields,
       track_cfg,
       estimation_reminders,
+      dev_specializations,
     } as Settings;
   };
 
@@ -363,6 +380,7 @@ export function createSqliteRepo(): Repo {
       if (patch.custom_fields !== undefined) ins.run("custom_fields", JSON.stringify(patch.custom_fields));
       if (patch.track_cfg !== undefined) ins.run("track_cfg", JSON.stringify(patch.track_cfg));
       if (patch.estimation_reminders !== undefined) ins.run("estimation_reminders", JSON.stringify(patch.estimation_reminders));
+      if (patch.dev_specializations !== undefined) ins.run("dev_specializations", JSON.stringify(patch.dev_specializations));
     },
     async settingsValueGet(key) {
       const r = db.prepare("SELECT value FROM settings WHERE key=?").get(key) as { value: string } | undefined;
@@ -537,6 +555,43 @@ export function createSqliteRepo(): Repo {
     async assignmentList(ticketId) {
       const rows = db.prepare("SELECT * FROM ticket_assignments WHERE ticket_id=? ORDER BY assigned_at DESC").all(ticketId) as (Omit<TicketAssignment, "is_current"> & { is_current: number })[];
       return rows.map((r) => ({ ...r, is_current: !!r.is_current }));
+    },
+
+    async specialistAdd(sp) {
+      // إسناد جديد لنفس التخصص يسحب الحالي (إعادة إسناد)
+      db.prepare("UPDATE ticket_specialists SET is_current=0 WHERE ticket_id=? AND spec_key=? AND is_current=1")
+        .run(sp.ticket_id, sp.spec_key);
+      const row: TicketSpecialist = {
+        id: genId("spc"), ticket_id: sp.ticket_id, spec_key: sp.spec_key, spec_label: sp.spec_label,
+        staff_id: sp.staff_id, staff_name: sp.staff_name, status: "pending",
+        est_days: sp.est_days ?? null, est_hours: sp.est_hours ?? null,
+        started_at: null, ready_at: null, decline_reason: null, reminders_sent: null,
+        assigned_by: sp.assigned_by ?? null, assigned_at: nowIso(), responded_at: null, is_current: true,
+      };
+      db.prepare(`INSERT INTO ticket_specialists (id,ticket_id,spec_key,spec_label,staff_id,staff_name,status,est_days,est_hours,started_at,ready_at,decline_reason,reminders_sent,assigned_by,assigned_at,responded_at,is_current)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1)`)
+        .run(row.id,row.ticket_id,row.spec_key,row.spec_label,row.staff_id,row.staff_name,row.status,row.est_days,row.est_hours,row.started_at,row.ready_at,row.decline_reason,null,row.assigned_by,row.assigned_at,row.responded_at);
+      return row;
+    },
+    async specialistList(ticketId) {
+      const rows = db.prepare("SELECT * FROM ticket_specialists WHERE ticket_id=? AND is_current=1 ORDER BY assigned_at").all(ticketId) as (Omit<TicketSpecialist, "is_current" | "reminders_sent"> & { is_current: number; reminders_sent: string | null })[];
+      return rows.map((r) => ({ ...r, is_current: !!r.is_current, reminders_sent: r.reminders_sent ? JSON.parse(r.reminders_sent) as Record<string, string> : null }));
+    },
+    async specialistGet(id) {
+      const r = db.prepare("SELECT * FROM ticket_specialists WHERE id=?").get(id) as (Omit<TicketSpecialist, "is_current" | "reminders_sent"> & { is_current: number; reminders_sent: string | null }) | undefined;
+      return r ? { ...r, is_current: !!r.is_current, reminders_sent: r.reminders_sent ? JSON.parse(r.reminders_sent) as Record<string, string> : null } : null;
+    },
+    async specialistUpdate(id, patch) {
+      const sets: string[] = []; const args: unknown[] = [];
+      for (const k of ["status","est_days","est_hours","started_at","ready_at","decline_reason","responded_at","staff_id","staff_name"] as const) {
+        if (patch[k] !== undefined) { sets.push(`${k}=?`); args.push(patch[k] as unknown); }
+      }
+      if (patch.reminders_sent !== undefined) { sets.push("reminders_sent=?"); args.push(patch.reminders_sent ? JSON.stringify(patch.reminders_sent) : null); }
+      if (sets.length) { args.push(id); db.prepare(`UPDATE ticket_specialists SET ${sets.join(",")} WHERE id=?`).run(...args); }
+      return this.specialistGet(id);
+    },
+    async specialistRemove(id) {
+      db.prepare("UPDATE ticket_specialists SET is_current=0 WHERE id=?").run(id);
     },
 
     async meetingCreate(m) {

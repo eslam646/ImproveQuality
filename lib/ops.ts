@@ -705,3 +705,185 @@ export async function addNoteOp(
     } as AutomationContext & { note: string },
   });
 }
+
+// ═══════════ المتخصصون (باك/فرونت/UX) — كل تخصص له شخص وتقدير وحالة مستقلة ═══════════
+// القاعدة: التاسك لا تتحول «جاهز للاختبار» إلا بعد ما كل المتخصصين الحاليين يعلنون الجاهزية
+
+async function specialistVars(sp: { spec_label: string; staff_name: string }, extra?: Record<string, string>) {
+  return { spec_label: sp.spec_label, specialist_name: sp.staff_name, ...(extra ?? {}) };
+}
+
+// إجمالي تقدير التذكرة = مجموع تقديرات المتخصصين + تقدير الديف الرئيسي + تقدير التيست
+async function recalcTicketEstimation(ticketId: string): Promise<void> {
+  const repo = await getRepo();
+  const t = await repo.ticketById(ticketId);
+  if (!t) return;
+  const specialists = await repo.specialistList(ticketId);
+  let days = (t.dev_est_days ?? 0) + (t.test_est_days ?? 0);
+  let hours = (t.dev_est_hours ?? 0) + (t.test_est_hours ?? 0);
+  for (const sp of specialists.filter((x) => x.status !== "declined")) {
+    days += sp.est_days ?? 0;
+    hours += sp.est_hours ?? 0;
+  }
+  if (hours >= 8) { days += Math.floor(hours / 8); hours = hours % 8; }
+  await repo.ticketUpdate(ticketId, { est_days: days || null, est_hours: hours || null, updated_at: nowIso() });
+}
+
+// إسناد متخصص لتخصص معيّن — إعادة الإسناد تسحب الحالي وتبلغه
+export async function assignSpecialistOp(
+  ticketId: string, specKey: string, staffId: string,
+  est: { days?: number | null; hours?: number | null },
+  actorLabel: string, assignedBy: string | null,
+): Promise<{ ok: boolean; error?: string }> {
+  const repo = await getRepo();
+  const t = await repo.ticketById(ticketId);
+  if (!t) return { ok: false, error: "الطلب غير موجود" };
+  if (t.is_urgent) return { ok: false, error: "الدعم الفوري لا يستخدم التخصصات — تيست وديف مباشرة" };
+  const settings = await repo.settingsGet();
+  const spec = settings.dev_specializations.find((x) => x.key === specKey && x.active);
+  if (!spec) return { ok: false, error: "التخصص غير موجود أو موقوف" };
+  const staff = await repo.staffGet(staffId);
+  if (!staff || !staff.active || staff.role !== "developer") return { ok: false, error: "اختر مطوراً نشطاً" };
+
+  const current = (await repo.specialistList(ticketId)).find((x) => x.spec_key === specKey);
+  if (current && current.staff_id !== staffId && current.status !== "declined") {
+    // سحب من الحالي وإبلاغه عبر قاعدة «سحب التكليف»
+    const evt = await repo.eventAdd({
+      ticket_id: ticketId, type: "note.added", actor_label: actorLabel,
+      old_values: null, new_values: { note: `↩️ سُحب تخصص «${spec.label}» من ${current.staff_name} وأُسند إلى ${staff.name}` },
+    });
+    await emit({
+      id: evt.id, type: "assignment.revoked",
+      ctx: {
+        ticket: t, old: null, actor_label: actorLabel, actor_staff_id: assignedBy,
+        vars: {
+          previous_assignee: current.staff_name, previous_assignee_id: current.staff_id,
+          new_assignee: staff.name, assignment_role_label: spec.label,
+          actor_name: actorLabel.split(" (")[0],
+        },
+      },
+    });
+  }
+
+  const sp = await repo.specialistAdd({
+    ticket_id: ticketId, spec_key: spec.key, spec_label: spec.label,
+    staff_id: staff.id, staff_name: staff.name,
+    est_days: est.days ?? null, est_hours: est.hours ?? null, assigned_by: assignedBy,
+  });
+  await recalcTicketEstimation(ticketId);
+  await repo.auditAdd({
+    entity_type: "ticket", entity_id: ticketId, action: "specialist.assigned",
+    actor_staff_id: assignedBy, actor_label: actorLabel,
+    old_values: current ? { staff_id: current.staff_id, staff_name: current.staff_name } : null,
+    new_values: { spec: spec.key, spec_label: spec.label, staff_id: staff.id, staff_name: staff.name },
+  });
+  const evt = await repo.eventAdd({
+    ticket_id: ticketId, type: "ticket.assigned", actor_label: actorLabel,
+    old_values: null, new_values: { specialist: `${spec.label}: ${staff.name}` },
+  });
+  await emit({
+    id: evt.id, type: "spec.assigned",
+    ctx: {
+      ticket: t, old: null, actor_label: actorLabel, actor_staff_id: assignedBy,
+      vars: await specialistVars(sp, { specialist_id: staff.id }),
+    },
+  });
+  return { ok: true };
+}
+
+// قرار المتخصص: قبول / رفض بسبب — القبول يبدأ عدّاد تقديره
+export async function respondSpecialistOp(
+  specialistId: string,
+  actor: { staff_id: string; name: string },
+  decision: "accepted" | "declined",
+  reason?: string,
+): Promise<{ ok: boolean; error?: string }> {
+  const repo = await getRepo();
+  const sp = await repo.specialistGet(specialistId);
+  if (!sp || !sp.is_current) return { ok: false, error: "التكليف غير موجود أو سُحب" };
+  if (sp.staff_id !== actor.staff_id) return { ok: false, error: "هذا التكليف غير مسند إليك" };
+  if (sp.status === "ready") return { ok: false, error: "أعلنت الجاهزية بالفعل — لا قرار بعد الإنهاء" };
+  if (sp.status !== "pending") return { ok: false, error: "تم الرد على هذا التكليف بالفعل" };
+  if (decision === "declined" && (!reason || reason.trim().length < 3)) return { ok: false, error: "سبب الرفض إجباري" };
+
+  const t = await repo.ticketById(sp.ticket_id);
+  if (!t) return { ok: false, error: "الطلب غير موجود" };
+  await repo.specialistUpdate(sp.id, {
+    status: decision, responded_at: nowIso(),
+    decline_reason: decision === "declined" ? reason!.trim() : null,
+    started_at: decision === "accepted" ? nowIso() : null,
+  });
+  if (decision === "declined") await recalcTicketEstimation(sp.ticket_id);
+
+  const actorLabel = `${actor.name} (${sp.spec_label})`;
+  await repo.auditAdd({
+    entity_type: "ticket", entity_id: sp.ticket_id, action: `specialist.${decision}`,
+    actor_staff_id: actor.staff_id, actor_label: actorLabel,
+    old_values: { status: sp.status }, new_values: { status: decision, reason: reason?.trim() || null },
+  });
+  const evt = await repo.eventAdd({
+    ticket_id: sp.ticket_id, type: "note.added", actor_label: actorLabel,
+    old_values: null,
+    new_values: { note: `${decision === "accepted" ? `✅ قبل تكليف «${sp.spec_label}» وبدأ عدّاد تقديره` : `❌ رفض تكليف «${sp.spec_label}» — السبب: ${reason?.trim()}`}` },
+  });
+  await emit({
+    id: evt.id, type: decision === "accepted" ? "spec.accepted" : "spec.declined",
+    ctx: {
+      ticket: t, old: null, actor_label: actorLabel, actor_staff_id: actor.staff_id,
+      vars: await specialistVars(sp, { actor_name: actor.name, reason: reason?.trim() ?? "" }),
+    },
+  });
+  return { ok: true };
+}
+
+// المتخصص يعلن «جاهز من ناحيتي» — ولما كل المتخصصين يجهزون تتحول التاسك «جاهز للاختبار» تلقائياً
+export async function specialistReadyOp(
+  specialistId: string,
+  actor: { staff_id: string; name: string },
+  note?: string,
+): Promise<{ ok: boolean; error?: string; allReady?: boolean }> {
+  const repo = await getRepo();
+  const sp = await repo.specialistGet(specialistId);
+  if (!sp || !sp.is_current) return { ok: false, error: "التكليف غير موجود أو سُحب" };
+  if (sp.staff_id !== actor.staff_id) return { ok: false, error: "هذا التكليف غير مسند إليك" };
+  if (sp.status === "ready") return { ok: false, error: "أعلنت الجاهزية بالفعل" };
+  if (sp.status !== "accepted") return { ok: false, error: "اقبل التكليف أولاً قبل إعلان الجاهزية" };
+  const t = await repo.ticketById(sp.ticket_id);
+  if (!t) return { ok: false, error: "الطلب غير موجود" };
+
+  await repo.specialistUpdate(sp.id, { status: "ready", ready_at: nowIso() });
+  const actorLabel = `${actor.name} (${sp.spec_label})`;
+
+  // هل الجميع جاهز؟ (نتجاهل المرفوضين — خاناتهم بانتظار إعادة إسناد ولا تعطل)
+  const all = await repo.specialistList(sp.ticket_id);
+  const relevant = all.filter((x) => x.status !== "declined");
+  const allReady = relevant.length > 0 && relevant.every((x) => x.status === "ready");
+
+  await repo.auditAdd({
+    entity_type: "ticket", entity_id: sp.ticket_id, action: "specialist.ready",
+    actor_staff_id: actor.staff_id, actor_label: actorLabel,
+    old_values: { status: "accepted" }, new_values: { status: "ready", all_ready: allReady, note: note?.trim() || null },
+  });
+  const evt = await repo.eventAdd({
+    ticket_id: sp.ticket_id, type: "note.added", actor_label: actorLabel,
+    old_values: null,
+    new_values: { note: `✅ «${sp.spec_label}» جاهز من ناحية ${actor.name}${note?.trim() ? ` — ${note.trim()}` : ""}${allReady ? " — 🎉 كل التخصصات جاهزة، تحولت التاسك لجاهز للاختبار" : ""}` },
+  });
+  await emit({
+    id: evt.id, type: "spec.ready",
+    ctx: {
+      ticket: t, old: null, actor_label: actorLabel, actor_staff_id: actor.staff_id,
+      vars: await specialistVars(sp, {
+        actor_name: actor.name, note: note?.trim() ?? "",
+        all_ready: allReady ? "1" : "",
+        pending_specs: relevant.filter((x) => x.status !== "ready").map((x) => `${x.spec_label} (${x.staff_name})`).join("، ") || "—",
+      }),
+    },
+  });
+
+  // الجميع جاهز → التاسك كلها «جاهز للاختبار» ودورة التيست تبدأ
+  if (allReady && !["ready_for_test", "testing", "test_passed", "closed", "fixed", "rejected"].includes(t.dev_status)) {
+    await changeStatusOp(sp.ticket_id, "ready_for_test", "النظام — اكتملت جاهزية كل التخصصات");
+  }
+  return { ok: true, allReady };
+}

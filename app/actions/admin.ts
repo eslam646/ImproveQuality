@@ -6,7 +6,7 @@ import { getRepo } from "@/lib/db";
 import { renderBlocks, renderTemplate, templateVars, wrapEmail } from "@/lib/templates";
 import { sendMail } from "@/lib/email";
 import { settingsSchema, staffSchema, templateSchema } from "@/lib/validators";
-import type { CustomFieldCfg, CustomFieldType, EstimationReminderCfg, FormFieldCfg, Role, RolePermissions, TemplateBlocks, TrackPageCfg, UrgentFormFieldCfg, UserPermissionOverrides } from "@/lib/types";
+import type { CustomFieldCfg, CustomFieldType, DevSpecialization, EstimationReminderCfg, FormFieldCfg, Role, RolePermissions, TemplateBlocks, TrackPageCfg, UrgentFormFieldCfg, UserPermissionOverrides } from "@/lib/types";
 import { DEFAULT_TEMPLATE_BLOCKS } from "@/lib/types";
 import { isEmail } from "@/lib/util";
 import { generatePrivateToken, hashPrivateToken } from "@/lib/private-links";
@@ -165,6 +165,19 @@ export async function generatePrivateAccessLinkAction(staffId: string) {
   });
   revalidatePath("/staff");
   return { ok: true, url: `${settings.base_url}/request/${token}` };
+}
+
+// ====== تخصصات التطوير (باك/فرونت/UX) ======
+export async function saveSpecializationsAction(items: DevSpecialization[]) {
+  await requireStaff(["admin"]);
+  const clean = (Array.isArray(items) ? items : [])
+    .filter((x) => x && typeof x.key === "string" && typeof x.label === "string" && x.label.trim().length >= 2)
+    .map((x) => ({ key: x.key.slice(0, 40), label: x.label.trim().slice(0, 60), active: !!x.active }));
+  if (!clean.length) return { ok: false, error: "أبقِ تخصصاً واحداً على الأقل" };
+  const repo = await getRepo();
+  await repo.settingsSet({ dev_specializations: clean });
+  revalidatePath("/settings");
+  return { ok: true };
 }
 
 // ====== روابط الدخول الشخصية (Magic Links) — دخول كامل بهوية الموظف بدون PIN ======

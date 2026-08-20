@@ -1,7 +1,7 @@
 // طبقة الوصول للبيانات — واجهة موحدة مع تنفيذين: SQLite (محلي) + Supabase (إنتاج)
 import type {
   AutomationRule, Attachment, AuditEntry, Client, Condition, DevStatus, EmailLog, EmailTemplate,
-  Job, Meeting, MeetingParticipant, Notification, PrivateAccessLink, Settings, Staff, Ticket, TicketAssignment, TicketEvent, Action, TemplateBlocks,
+  Job, Meeting, MeetingParticipant, Notification, PrivateAccessLink, Settings, Staff, Ticket, TicketAssignment, TicketSpecialist, TicketEvent, Action, TemplateBlocks,
   RequestType, TicketKind, TicketPriority,
 } from "../types";
 
@@ -67,6 +67,16 @@ export interface Repo {
   assignmentRespond(id: string, status: "accepted" | "declined", reason?: string | null): Promise<TicketAssignment | null>;
   assignmentComplete(ticketId: string, role: "tester" | "developer"): Promise<void>;
   assignmentList(ticketId: string): Promise<TicketAssignment[]>;
+
+  // متخصصو التطوير (باك/فرونت/UX) — لكل تخصص شخص وتقدير وحالة مستقلة
+  specialistAdd(sp: {
+    ticket_id: string; spec_key: string; spec_label: string; staff_id: string; staff_name: string;
+    est_days?: number | null; est_hours?: number | null; assigned_by?: string | null;
+  }): Promise<TicketSpecialist>;
+  specialistList(ticketId: string): Promise<TicketSpecialist[]>;
+  specialistGet(id: string): Promise<TicketSpecialist | null>;
+  specialistUpdate(id: string, patch: Partial<TicketSpecialist>): Promise<TicketSpecialist | null>;
+  specialistRemove(id: string): Promise<void>;
 
   meetingCreate(m: Omit<Meeting, "id" | "created_at" | "updated_at">): Promise<Meeting>;
   meetingList(ticketId: string): Promise<Meeting[]>;

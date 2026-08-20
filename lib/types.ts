@@ -177,6 +177,10 @@ export type TriggerType =
   | "tester.accepted" | "tester.declined"       // قرار التيستر
   | "developer.accepted" | "developer.declined" // قرار الديف
   | "assignment.revoked"     // سُحب التكليف من شخص (أُعيد الإسناد لغيره)
+  | "spec.assigned"          // إسناد تخصص (باك/فرونت/UX) لمطوّر
+  | "spec.accepted" | "spec.declined"  // قرار المتخصص
+  | "spec.ready"             // متخصص أنهى جزءه (جاهز من ناحيته)
+  | "spec.overdue"           // متخصص تجاوز تقديره ولم يعلن الجاهزية
   | "urgent.withdrawal"      // اعتذار عن الدعم الفوري بعد القبول
   | "urgent.progress"        // موقف الدعم الفوري: مازلت أعمل / انتهيت
   | "ticket.rejected"        // رفض الطلب نهائياً (بسبب)
@@ -198,7 +202,7 @@ export type Recipient =
   | { kind: "ref"; ref:
       | "developer" | "tester" | "creator"
       | "developer_manager" | "tester_manager" | "creator_manager"
-      | "ticket_parties" | "ticket_managers" | "client" | "previous_assignee" }
+      | "ticket_parties" | "ticket_managers" | "client" | "previous_assignee" | "event_target" }
   | { kind: "staff"; staff_id: string }
   | { kind: "role"; role: Role }
   | { kind: "email"; email: string };
@@ -297,6 +301,41 @@ export interface Settings {
   custom_fields: CustomFieldCfg[];   // منشئ الحقول المخصصة
   track_cfg: TrackPageCfg;           // ماذا تعرض صفحة الاستعلام العامة
   estimation_reminders: EstimationReminderCfg; // تذكيرات التقدير الزمني — تحكم كامل من الإعدادات
+  dev_specializations: DevSpecialization[];    // تخصصات التطوير (باك/فرونت/UX...) — يحددها الأدمن
+}
+
+// ===== تخصصات التطوير — قائمة ديناميكية من الإعدادات =====
+export interface DevSpecialization {
+  key: string;   // ثابت داخلي
+  label: string; // الاسم الظاهر
+  active: boolean;
+}
+
+export const DEFAULT_DEV_SPECIALIZATIONS: DevSpecialization[] = [
+  { key: "backend", label: "باك اند", active: true },
+  { key: "frontend", label: "فرونت اند", active: true },
+  { key: "ux", label: "UX / تصميم", active: true },
+];
+
+// ===== متخصص مسند على تذكرة — كل تخصص له شخص وتقدير وحالة مستقلة =====
+export interface TicketSpecialist {
+  id: string;
+  ticket_id: string;
+  spec_key: string;
+  spec_label: string;   // الاسم وقت الإسناد (يثبت حتى لو أعيدت تسمية التخصص)
+  staff_id: string;
+  staff_name: string;
+  status: "pending" | "accepted" | "declined" | "ready";
+  est_days: number | null;
+  est_hours: number | null;
+  started_at: string | null;   // بدء العمل — يبدأ عدّاده
+  ready_at: string | null;     // أعلن الجاهزية
+  decline_reason: string | null;
+  reminders_sent: Record<string, string> | null;
+  assigned_by: string | null;
+  assigned_at: string;
+  responded_at: string | null;
+  is_current: boolean;
 }
 
 // ===== تذكيرات التقدير الزمني (الديف والتيست) — قابلة للتحكم من الإعدادات =====

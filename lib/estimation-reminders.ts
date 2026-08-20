@@ -130,3 +130,59 @@ export async function processEstimationReminders(): Promise<number> {
   }
   return fired;
 }
+
+// ═══ تذكيرات المتخصصين (باك/فرونت/UX): كل متخصص له عدّاده من قبوله حتى إعلان جاهزيته ═══
+// «اللي جاهز خلص — واللي لسه يتبعت عليه تأخير» — بنفس توقيتات ⏰ الإعدادات وقاعدة spec.overdue في الأتمتة
+export async function processSpecialistReminders(): Promise<number> {
+  const repo = await getRepo();
+  const settings = await repo.settingsGet();
+  const cfg = settings.estimation_reminders;
+  if (!cfg.enabled || !cfg.overdue) return 0;
+
+  // التذاكر النشطة في مرحلة التطوير فقط
+  const candidates: Ticket[] = [];
+  for (const status of ["handed_to_dev", "in_progress"] as const) {
+    const { rows } = await repo.ticketList({ status, pageSize: 300 });
+    candidates.push(...rows);
+  }
+
+  let fired = 0;
+  const now = Date.now();
+  for (const t of candidates) {
+    if (t.is_urgent) continue;
+    const specialists = await repo.specialistList(t.id);
+    for (const sp of specialists) {
+      // العدّاد يخص من قَبِل ولم يعلن الجاهزية بعد وله تقدير
+      if (sp.status !== "accepted" || !sp.started_at) continue;
+      const totalHours = (sp.est_days ?? 0) * cfg.day_hours + (sp.est_hours ?? 0);
+      if (totalHours <= 0) continue;
+      const endMs = Date.parse(sp.started_at) + totalHours * 3600_000;
+      if (now <= endMs) continue;
+
+      const reminders = { ...(sp.reminders_sent ?? {}) };
+      const last = reminders["overdue"] ? Date.parse(reminders["overdue"]) : 0;
+      const repeatMs = cfg.overdue_repeat_hours > 0 ? cfg.overdue_repeat_hours * 3600_000 : Infinity;
+      if (last && (repeatMs === Infinity || now - last < repeatMs)) continue;
+
+      const overdueHours = Math.floor((now - endMs) / 3600_000);
+      const evt = await repo.eventAdd({
+        ticket_id: t.id, type: "job.executed", actor_label: "نظام التذكيرات",
+        old_values: null, new_values: { reminder: `spec.${sp.spec_key}.overdue` },
+      });
+      await emit({
+        id: evt.id, type: "spec.overdue",
+        ctx: {
+          ticket: t, old: null, actor_label: "نظام التذكيرات",
+          vars: {
+            spec_label: sp.spec_label, specialist_name: sp.staff_name,
+            specialist_id: sp.staff_id, overdue_hours: String(Math.max(0, overdueHours)),
+          },
+        },
+      });
+      reminders["overdue"] = nowIso();
+      await repo.specialistUpdate(sp.id, { reminders_sent: reminders });
+      fired++;
+    }
+  }
+  return fired;
+}
