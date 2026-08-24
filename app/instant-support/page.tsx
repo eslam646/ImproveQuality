@@ -19,12 +19,15 @@ export default async function InstantSupportPage({
   const testers = staff.filter((s) => s.role === "tester");
   const developers = staff.filter((s) => s.role === "developer");
   const requesters = staff.filter((s) => s.role === "support" || s.role === "admin");
+  const labelOf_creator = (l: string) => l.replace(" *", "");
   const renderUrgentField = (f: (typeof settings.urgent_form_fields)[number]) => {
     if (!f.visible) return null;
     const label = `${f.label}${f.required ? " *" : ""}`;
     switch (f.key) {
       case "client": return <Field label={label} hint="اختر عميلاً مسجلاً، أو اكتب اسماً جديداً"><select name="client_id" required={f.required} className={selectCls} defaultValue=""><option value="">— اختر العميل —</option>{clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select><input name="client_name" className={`${inputCls} mt-2`} placeholder="أو اكتب اسم العميل" /></Field>;
-      case "creator": return <Field label={label} hint="يُستخدم اسمه وبريده ديناميكيًا في الإيميلات والسجل"><select name="creator_id" required={f.required} className={selectCls} defaultValue={requesters.some((r) => r.id === actor.id) ? actor.id : (requesters[0]?.id ?? "")}><option value="" disabled>اختر مدخل البيانات…</option>{requesters.map((r) => <option key={r.id} value={r.id}>{r.name} — {r.email}</option>)}</select></Field>;
+      case "creator": return actor.role === "admin"
+        ? <Field label={label} hint="كمدير يمكنك الإدخال بالنيابة — يُسجل في التدقيق أنك المُدخل الفعلي"><select name="creator_id" required={f.required} className={selectCls} defaultValue={requesters.some((r) => r.id === actor.id) ? actor.id : (requesters[0]?.id ?? "")}><option value="" disabled>اختر مدخل البيانات…</option>{requesters.map((r) => <option key={r.id} value={r.id}>{r.name} — {r.email}</option>)}</select></Field>
+        : <Field label={labelOf_creator(f.label)} hint="أنت مسجل الدخول — الطلب يُسجل باسمك تلقائياً"><input type="hidden" name="creator_id" value={actor.id} /><div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-bold text-slate-700">🔒 {actor.name}</div></Field>;
       case "title": return <Field label={label} hint="عنوان مختصر يظهر في الجدول والإيميلات"><input name="title" required={f.required} minLength={3} maxLength={180} className={inputCls} placeholder="مثال: توقف خدمة الفواتير على سيرفر الإنتاج" /></Field>;
       case "affected_service": return <Field label={label}><input name="affected_service" required={f.required} minLength={f.required ? 2 : 0} className={inputCls} placeholder="مثال: Production API / SQL Server / خدمة الفواتير" /></Field>;
       case "details": return <Field label={label} hint="اكتب ما حدث وتأثيره والخطوات التي جُربت وما المطلوب فوراً"><textarea name="details" required={f.required} minLength={10} rows={9} className={inputCls} placeholder="السيرفر متوقف منذ الساعة… والخطوات التي تم تنفيذها…" /></Field>;

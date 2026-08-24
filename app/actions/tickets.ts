@@ -120,7 +120,8 @@ export async function createTicketAction(formData: FormData) {
     if (v) custom[cf.key] = v;
   }
 
-  const creator = (await repo.staffGet(creator_id)) ?? actor;
+  // الحماية: غير الأدمن يُسجل الطلب باسمه هو دائماً مهما أُرسل في النموذج
+  const creator = actor.role === "admin" ? ((await repo.staffGet(creator_id)) ?? actor) : actor;
   const label = creator.id === actor.id ? creator.name : `${creator.name} (أدخله ${actor.name})`;
   const linkedTicket = linked_ticket_code ? await repo.ticketByCode(linked_ticket_code) : null;
   if (request_type === "change_request" && !linkedTicket) fail("كود الطلب السابق غير موجود");
@@ -164,7 +165,10 @@ export async function createInstantSupportAction(formData: FormData) {
     const c = (await repo.clientsList()).find((x) => x.id === client_id);
     if (c) client_name = c.name;
   }
-  const requester = await repo.staffGet(creator_id);
+  // الحماية: غير الأدمن يسجل الدعم الفوري باسمه هو دائماً
+  const requester = actor.role === "admin"
+    ? await repo.staffGet(creator_id)
+    : actor;
   if (!requester || !requester.active || !["support", "admin"].includes(requester.role)) fail("اختيار مدخل البيانات إجباري");
   if (client_name.length < 2) fail("اختر العميل أو اكتب اسمه");
   if (title.length < 3) fail("عنوان المشكلة الطارئة إجباري");

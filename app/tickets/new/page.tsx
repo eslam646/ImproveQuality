@@ -70,11 +70,18 @@ export default async function NewTicketPage({
             </Field>
           )}
           {show("creator") && (
-            <Field style={{ order: orderOf("creator") }} label={`${labelOf("creator")}${star("creator")}`} hint="يظهر اسمه كمدخل للطلب ويصله إشعار — افتراضيًا أنت">
-              <select name="creator_id" className={selectCls} defaultValue={actor.id}>
-                {creators.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </select>
-            </Field>
+            actor.role === "admin" ? (
+              <Field style={{ order: orderOf("creator") }} label={`${labelOf("creator")}${star("creator")}`} hint="كمدير يمكنك إدخال الطلب بالنيابة عن مدخل بيانات — يُسجل في التدقيق أنك المُدخل الفعلي">
+                <select name="creator_id" className={selectCls} defaultValue={actor.id}>
+                  {creators.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
+              </Field>
+            ) : (
+              <Field style={{ order: orderOf("creator") }} label={labelOf("creator")} hint="أنت مسجل الدخول — الطلب يُسجل باسمك تلقائياً">
+                <input type="hidden" name="creator_id" value={actor.id} />
+                <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-bold text-slate-700">🔒 {actor.name}</div>
+              </Field>
+            )
           )}
           {show("tester") && (
             <Field style={{ order: orderOf("tester") }} label={`${labelOf("tester")}${star("tester")}`} hint="التيستر يراجع اكتمال البيانات والمرفقات أولاً؛ سيصله إيميل التكليف">
