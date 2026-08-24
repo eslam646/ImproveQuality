@@ -132,15 +132,26 @@ export async function emit(evt: FiredEvent): Promise<number> {
     }
   }
 
-  // إرسال فوري: مهام هذا الحدث تُعالج الآن داخل نفس الطلب —
-  // لا اعتماد على مؤقّت خلفي (غير مضمون على Cloudflare Workers) والجدولة الخارجية تبقى احتياطاً
+  // إرسال فوري لكن «بعد الرد»: على Cloudflare عبر waitUntil (يعمل بعد إرجاع الاستجابة)،
+  // ومحلياً fire-and-forget — المستخدم لا ينتظر Brevo إطلاقاً، والجدولة تبقى شبكة أمان
   if (enqueued > 0) {
+    const run = async () => {
+      try {
+        const { processDueJobs } = await import("./worker");
+        await processDueJobs(enqueued + 10);
+      } catch (e) {
+        console.error("immediate job processing:", e); // ستُلتقط في الدورة المجدولة القادمة
+      }
+    };
+    let deferred = false;
     try {
-      const { processDueJobs } = await import("./worker");
-      await processDueJobs(enqueued + 10);
-    } catch (e) {
-      console.error("immediate job processing:", e); // ستُلتقط في الدورة المجدولة القادمة
-    }
+      // متاح فقط في بيئة OpenNext على Cloudflare
+      const mod = "@opennextjs/cloudflare";
+      const { getCloudflareContext } = (await import(/* webpackIgnore: true */ mod)) as { getCloudflareContext: () => { ctx?: { waitUntil?: (p: Promise<unknown>) => void } } };
+      const ctx = getCloudflareContext()?.ctx;
+      if (ctx?.waitUntil) { ctx.waitUntil(run()); deferred = true; }
+    } catch { /* بيئة محلية */ }
+    if (!deferred) void run();
   }
   return enqueued;
 }

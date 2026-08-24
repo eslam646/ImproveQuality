@@ -408,7 +408,6 @@ export const DEFAULT_FORM_FIELDS: FormFieldCfg[] = [
   { key: "details", label: "التفاصيل والخطوات", visible: true, required: true },
   { key: "creator", label: "مدخل البيانات", visible: true, required: true },
   { key: "tester", label: "فريق الاختبار", visible: true, required: true },
-  { key: "developer", label: "إسناد إلى مطور (قديم — استخدم التخصصات)", visible: false, required: false },
   { key: "attachment", label: "المرفقات", visible: true, required: true },
 ];
 

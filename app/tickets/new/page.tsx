@@ -25,7 +25,6 @@ export default async function NewTicketPage({
   const orderOf = (k: string) => { const i = cfg.findIndex((f) => f.key === k); return i < 0 ? 500 : i; };
 
   const all = await repo.staffList(true);
-  const devs = all.filter((s) => s.role === "developer");
   const testers = all.filter((s) => s.role === "tester");
   const creators = all.filter((s) => s.role === "support" || s.role === "admin");
   const clients = await repo.clientsList(true);
@@ -88,14 +87,6 @@ export default async function NewTicketPage({
               <select name="tester_id" required className={selectCls} defaultValue="">
                 <option value="" disabled>— اختر مسؤول الاختبار —</option>
                 {testers.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-              </select>
-            </Field>
-          )}
-          {show("developer") && (
-            <Field style={{ order: orderOf("developer") }} label={`${labelOf("developer")}${star("developer")}`} hint="اختياري في الطلب العادي؛ لا يُسنَد المطور إلا بعد اختيار التيستر">
-              <select name="developer_id" className={selectCls} defaultValue="">
-                <option value="">— يحدده التيستر لاحقاً —</option>
-                {devs.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
               </select>
             </Field>
           )}

@@ -134,7 +134,8 @@ export async function createTicketAction(formData: FormData) {
     ticket_kind: "standard",
     priority: "normal",
     linked_ticket_id: linkedTicket?.id ?? null,
-    developer_id: developer_id || null,
+    // التوحيد: الطلب العادي بلا ديف مباشر — التطوير يُسند من كارت التخصصات بعد تسليم التيست
+    developer_id: null,
     tester_id: tester_id || null,
     is_urgent: formData.get("is_urgent") === "1",
     actor: { staff_id: creator.id, label }, source: "internal",

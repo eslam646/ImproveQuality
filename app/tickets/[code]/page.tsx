@@ -185,7 +185,21 @@ export default async function TicketDetailsPage({
               <div><dt className="text-slate-400">بريد مدخل البيانات</dt><dd>{ticket.client_contact || "—"}</dd></div>
               <div><dt className="text-slate-400">مدخل البيانات</dt><dd>{ticket.created_by_name}</dd></div>
               <div><dt className="text-slate-400">المختبِر (التيست)</dt><dd className="font-semibold text-purple-700">{ticket.tester_name ?? "لم يُحدد بعد"}<span className="block text-xs text-slate-400">{ASSIGNMENT_STATUS_LABELS[ticket.tester_assignment_status ?? "unassigned"]}</span></dd></div>
-              <div><dt className="text-slate-400">المطور</dt><dd className="font-semibold">{ticket.developer_name ?? "غير معيّن"}<span className="block text-xs text-slate-400">{ASSIGNMENT_STATUS_LABELS[ticket.developer_assignment_status ?? "unassigned"]}</span></dd></div>
+              <div><dt className="text-slate-400">{ticket.is_urgent ? "المطور" : "فريق التطوير"}</dt><dd className="font-semibold">
+                {!ticket.is_urgent && specialists.filter((x) => x.status !== "declined").length > 0 ? (
+                  specialists.filter((x) => x.status !== "declined").map((sp) => (
+                    <span key={sp.id} className="block">
+                      {sp.staff_name}
+                      <span className="text-xs font-normal text-slate-400"> — {sp.spec_label} · {sp.status === "ready" ? "✅ جاهز" : sp.status === "accepted" ? "🔄 يعمل" : "⏳ بانتظار الرد"}</span>
+                    </span>
+                  ))
+                ) : (
+                  <>
+                    {ticket.developer_name ?? "غير معيّن"}
+                    <span className="block text-xs text-slate-400">{ASSIGNMENT_STATUS_LABELS[ticket.developer_assignment_status ?? "unassigned"]}</span>
+                  </>
+                )}
+              </dd></div>
               {!ticket.is_urgent && (
                 <div>
                   <dt className="text-slate-400">⏱️ تقدير التنفيذ الإجمالي (ديف + تيست)</dt>
