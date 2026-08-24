@@ -1,7 +1,7 @@
 import { getRepo } from "@/lib/db";
 import { Card, EmptyState, Badge } from "@/components/ui";
 import { PublicUpdateForm } from "@/components/public-forms";
-import { STATUS_COLORS, STATUS_LABELS } from "@/lib/labels";
+import { allowedTransitions, ALL_STATUSES, STATUS_COLORS, STATUS_LABELS } from "@/lib/labels";
 import { currentStaff, permissionsForStaff } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
@@ -27,6 +27,12 @@ export default async function PublicUpdateFormPage({
     || (actor.role === "tester" && ticket?.tester_assignment_status === "accepted")
     || (actor.role === "developer" && ticket?.developer_assignment_status === "accepted");
   const canUpdate = !!perms?.change_status && related && accepted && !ticket?.is_urgent;
+  // الانتقالات المسموحة لدور المستخدم فقط — نفس منطق السيرفر بالظبط (الديف مرحلته، التيست مرحلته)
+  const transitions = ticket && actor
+    ? (actor.role === "support" || actor.role === "admin"
+        ? ALL_STATUSES.filter((s) => s !== ticket.dev_status)
+        : allowedTransitions(actor.role, ticket.dev_status))
+    : [];
 
   return (
     <div className="mx-auto max-w-xl space-y-4 py-6">
@@ -44,6 +50,8 @@ export default async function PublicUpdateFormPage({
         <EmptyState>🚨 هذا طلب دعم فوري (طلب جانبي) — لا يمر بحالات التطوير. يُدار من صفحة الطلب عبر «موقف الدعم الفوري»: مازلت أعمل / انتهيت، أو الاعتذار بسبب.</EmptyState>
       ) : !canUpdate ? (
         <EmptyState>صلاحية تغيير الحالة غير مفعلة لك، أو أن الطلب ليس ضمن نطاق رؤيتك، أو لم تقبل التكليف بعد.</EmptyState>
+      ) : transitions.length === 0 ? (
+        <EmptyState>لا توجد انتقالات متاحة لدورك من الحالة الحالية «{STATUS_LABELS[ticket.dev_status]}» — انتظر دورك في سير العمل.</EmptyState>
       ) : (
         <Card>
           <div className="mb-4 grid grid-cols-2 gap-3 rounded-lg bg-slate-50 p-4 text-sm">
@@ -52,7 +60,7 @@ export default async function PublicUpdateFormPage({
             <div><span className="block text-xs text-slate-400">المطور (مقفل)</span><b>{ticket.developer_name ?? "—"}</b></div>
             <div><span className="block text-xs text-slate-400">الحالة الحالية</span><Badge color={STATUS_COLORS[ticket.dev_status]}>{STATUS_LABELS[ticket.dev_status]}</Badge></div>
           </div>
-          <PublicUpdateForm code={ticket.code} currentStatus={ticket.dev_status} />
+          <PublicUpdateForm code={ticket.code} currentStatus={ticket.dev_status} transitions={transitions} />
         </Card>
       )}
     </div>

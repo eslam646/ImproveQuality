@@ -296,7 +296,7 @@ export function TrackForm({ initialCode }: { initialCode: string }) {
   );
 }
 
-export function PublicUpdateForm({ code, currentStatus }: { code: string; currentStatus: DevStatus }) {
+export function PublicUpdateForm({ code, currentStatus, transitions }: { code: string; currentStatus: DevStatus; transitions?: DevStatus[] }) {
   const [status, setStatus] = useState<DevStatus | "">("");
   const [note, setNote] = useState("");
   const [loading, setLoading] = useState(false);
@@ -334,7 +334,7 @@ export function PublicUpdateForm({ code, currentStatus }: { code: string; curren
         <span className="mb-1 block text-sm font-semibold">الحالة الجديدة * (الحالية: {STATUS_LABELS[currentStatus]})</span>
         <select required value={status} onChange={(e) => setStatus(e.target.value as DevStatus)} className={inputCls}>
           <option value="" disabled>اختر الحالة…</option>
-          {ALL_STATUSES.filter((s) => s !== currentStatus).map((s) => (
+          {(transitions ?? ALL_STATUSES.filter((s) => s !== currentStatus)).map((s) => (
             <option key={s} value={s}>{STATUS_LABELS[s]}</option>
           ))}
         </select>
