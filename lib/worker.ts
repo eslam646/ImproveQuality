@@ -17,16 +17,12 @@ export interface ProcessReport {
   skipped: number;
 }
 
-export async function processAll(): Promise<ProcessReport> {
+// معالجة المهام المستحقة فقط (إيميلات/إشعارات) — تُستدعى فور كل حدث وأيضاً من الدورة المجدولة
+export async function processDueJobs(limit = 25): Promise<Omit<ProcessReport, "remindersEnqueued">> {
   const repo = await getRepo();
   const settings = await repo.settingsGet();
-  const remindersEnqueued = await enqueueStaleReminders();
-  // تذكيرات التقدير الزمني (منتصف/قبل النهاية/تأخير) — Idempotent ولا تفشل الدورة كلها
-  try { await processEstimationReminders(); } catch (e) { console.error("estimation reminders:", e); }
-  try { const { processSpecialistReminders } = await import("./estimation-reminders"); await processSpecialistReminders(); } catch (e) { console.error("specialist reminders:", e); }
-
-  const jobs = await repo.jobsDue(25);
-  const report: ProcessReport = { remindersEnqueued, processed: 0, sent: 0, retried: 0, dead: 0, skipped: 0 };
+  const jobs = await repo.jobsDue(limit);
+  const report = { processed: 0, sent: 0, retried: 0, dead: 0, skipped: 0 };
 
   for (const job of jobs) {
     if (!(await repo.jobClaim(job.id))) { report.skipped++; continue; }
@@ -49,6 +45,17 @@ export async function processAll(): Promise<ProcessReport> {
     }
   }
   return report;
+}
+
+export async function processAll(): Promise<ProcessReport> {
+  // التذكيرات المجدولة كلها محصّنة — فشل أي نوع منها لا يوقف إرسال الإيميلات
+  let remindersEnqueued = 0;
+  try { remindersEnqueued = await enqueueStaleReminders(); } catch (e) { console.error("stale reminders:", e); }
+  try { await processEstimationReminders(); } catch (e) { console.error("estimation reminders:", e); }
+  try { const { processSpecialistReminders } = await import("./estimation-reminders"); await processSpecialistReminders(); } catch (e) { console.error("specialist reminders:", e); }
+
+  const jobReport = await processDueJobs(25);
+  return { remindersEnqueued, ...jobReport };
 }
 
 async function executeJob(job: Job, settings: Settings): Promise<void> {

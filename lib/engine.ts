@@ -131,6 +131,17 @@ export async function emit(evt: FiredEvent): Promise<number> {
       enqueued++;
     }
   }
+
+  // إرسال فوري: مهام هذا الحدث تُعالج الآن داخل نفس الطلب —
+  // لا اعتماد على مؤقّت خلفي (غير مضمون على Cloudflare Workers) والجدولة الخارجية تبقى احتياطاً
+  if (enqueued > 0) {
+    try {
+      const { processDueJobs } = await import("./worker");
+      await processDueJobs(enqueued + 10);
+    } catch (e) {
+      console.error("immediate job processing:", e); // ستُلتقط في الدورة المجدولة القادمة
+    }
+  }
   return enqueued;
 }
 
