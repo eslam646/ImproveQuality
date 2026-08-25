@@ -10,6 +10,8 @@ export interface TicketFilter {
   q?: string;
   status?: DevStatus | "";
   developer_id?: string;
+  // «تذاكري كمطور»: مطور مباشر أو متخصص حالي (غير رافض) — تظهر فور الإسناد وتختفي عند رفضه
+  assignedDevId?: string;
   tester_id?: string;
   created_by?: string;
   request_type?: RequestType | "";
@@ -76,6 +78,8 @@ export interface Repo {
     est_days?: number | null; est_hours?: number | null; assigned_by?: string | null;
   }): Promise<TicketSpecialist>;
   specialistList(ticketId: string): Promise<TicketSpecialist[]>;
+  // تكليفات التخصص المعلقة بانتظار قرار موظف معيّن — لبانر «بانتظار قرارك»
+  specialistsPendingFor(staffId: string): Promise<TicketSpecialist[]>;
   specialistGet(id: string): Promise<TicketSpecialist | null>;
   specialistUpdate(id: string, patch: Partial<TicketSpecialist>): Promise<TicketSpecialist | null>;
   specialistRemove(id: string): Promise<void>;

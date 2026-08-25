@@ -486,6 +486,11 @@ export function createSqliteRepo(): Repo {
       if (f.q) { where.push("(code LIKE ? OR client_name LIKE ? OR title LIKE ?)"); args.push(`%${f.q}%`, `%${f.q}%`, `%${f.q}%`); }
       if (f.status) { where.push("dev_status=?"); args.push(f.status); }
       if (f.developer_id) { where.push("developer_id=?"); args.push(f.developer_id); }
+      if (f.assignedDevId) {
+        // مطور مباشر أو متخصص حالي لم يرفض — الرافض تختفي التذكرة من قائمته فوراً
+        where.push("(developer_id=? OR id IN (SELECT ticket_id FROM ticket_specialists WHERE staff_id=? AND is_current=1 AND status!='declined'))");
+        args.push(f.assignedDevId, f.assignedDevId);
+      }
       if (f.tester_id) { where.push("tester_id=?"); args.push(f.tester_id); }
       if (f.created_by) { where.push("created_by=?"); args.push(f.created_by); }
       if (f.request_type) { where.push("request_type=?"); args.push(f.request_type); }
@@ -586,6 +591,10 @@ export function createSqliteRepo(): Repo {
         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1)`)
         .run(row.id,row.ticket_id,row.spec_key,row.spec_label,row.staff_id,row.staff_name,row.status,row.est_days,row.est_hours,row.started_at,row.ready_at,row.decline_reason,null,row.assigned_by,row.assigned_at,row.responded_at);
       return row;
+    },
+    async specialistsPendingFor(staffId) {
+      const rows = db.prepare("SELECT * FROM ticket_specialists WHERE staff_id=? AND is_current=1 AND status='pending' ORDER BY assigned_at DESC").all(staffId) as (Omit<TicketSpecialist, "is_current" | "reminders_sent"> & { is_current: number; reminders_sent: string | null })[];
+      return rows.map((r) => ({ ...r, is_current: !!r.is_current, reminders_sent: r.reminders_sent ? JSON.parse(r.reminders_sent) : null }));
     },
     async specialistList(ticketId) {
       const rows = db.prepare("SELECT * FROM ticket_specialists WHERE ticket_id=? AND is_current=1 ORDER BY assigned_at").all(ticketId) as (Omit<TicketSpecialist, "is_current" | "reminders_sent"> & { is_current: number; reminders_sent: string | null })[];

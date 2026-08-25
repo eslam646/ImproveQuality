@@ -278,6 +278,15 @@ export async function createSupabaseRepo(): Promise<Repo> {
       if (f.q) q = q.or(`code.ilike.%${f.q}%,client_name.ilike.%${f.q}%,title.ilike.%${f.q}%`);
       if (f.status) q = q.eq("dev_status", f.status);
       if (f.developer_id) q = q.eq("developer_id", f.developer_id);
+      if (f.assignedDevId) {
+        // مطور مباشر أو متخصص حالي لم يرفض — الرافض تختفي التذكرة من قائمته فوراً
+        const { data: specRows } = await sb.from("ticket_specialists").select("ticket_id")
+          .eq("staff_id", f.assignedDevId).eq("is_current", true).neq("status", "declined");
+        const specIds = [...new Set((specRows ?? []).map((r) => (r as { ticket_id: string }).ticket_id))];
+        const orParts = [`developer_id.eq.${f.assignedDevId}`];
+        if (specIds.length) orParts.push(`id.in.(${specIds.join(",")})`);
+        q = q.or(orParts.join(","));
+      }
       if (f.tester_id) q = q.eq("tester_id", f.tester_id);
       if (f.created_by) q = q.eq("created_by", f.created_by);
       if (f.request_type) q = q.eq("request_type", f.request_type);
@@ -360,6 +369,9 @@ export async function createSupabaseRepo(): Promise<Repo> {
     },
     async specialistList(ticketId) {
       return (must(await sb.from("ticket_specialists").select("*").eq("ticket_id", ticketId).eq("is_current", true).order("assigned_at")) as TicketSpecialist[]) ?? [];
+    },
+    async specialistsPendingFor(staffId) {
+      return (must(await sb.from("ticket_specialists").select("*").eq("staff_id", staffId).eq("is_current", true).eq("status", "pending").order("assigned_at", { ascending: false })) as TicketSpecialist[]) ?? [];
     },
     async specialistGet(id) {
       const { data } = await sb.from("ticket_specialists").select("*").eq("id", id).maybeSingle();

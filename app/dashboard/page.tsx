@@ -40,7 +40,9 @@ export default async function DashboardPage({
     repo.ticketList({
       q: q || undefined,
       status: status || undefined,
-      developer_id: mine ? actor.id : developer_id || undefined,
+      // المطور يرى تذاكره المباشرة + المسند عليها كمتخصص (باك/فرونت/UX) — فور الإسناد وقبل قبوله
+      developer_id: mine ? undefined : developer_id || undefined,
+      assignedDevId: mine ? actor.id : undefined,
       tester_id: actor.role === "tester" && !canViewAll ? actor.id : tester_id || undefined,
       request_type: request_type || undefined,
       ticket_kind: ticket_kind || undefined,
@@ -49,6 +51,17 @@ export default async function DashboardPage({
     }),
     repo.ticketCounts(),
   ]);
+
+  // 🔔 بانتظار قرارك: تكليفات تخصص معلقة + تكليفات تيست/ديف مباشرة معلقة — بانر بارز أعلى القائمة
+  const pendingSpecs = actor.role === "developer" ? await repo.specialistsPendingFor(actor.id) : [];
+  const pendingSpecTickets = (await Promise.all(pendingSpecs.map(async (sp) => {
+    const t = await repo.ticketById(sp.ticket_id);
+    return t ? { code: t.code, title: t.title, spec: sp.spec_label } : null;
+  }))).filter((x): x is { code: string; title: string | null; spec: string } => !!x);
+  const pendingDirect = rows.filter((t) =>
+    (actor.role === "tester" && t.tester_id === actor.id && t.tester_assignment_status === "pending") ||
+    (actor.role === "developer" && t.developer_id === actor.id && t.developer_assignment_status === "pending"),
+  );
 
   // فريق التطوير (المتخصصون) لكل تذكرة في الصفحة الحالية — للعرض في عمود «المطور»
   const specialistsByTicket: Record<string, string> = {};
@@ -80,6 +93,33 @@ export default async function DashboardPage({
 
   return (
     <div className="space-y-5">
+      {(pendingSpecTickets.length > 0 || pendingDirect.length > 0) && (
+        <div className="rounded-2xl border-2 border-amber-300 bg-amber-50 p-4">
+          <p className="font-extrabold text-amber-900">🔔 بانتظار قرارك — {pendingSpecTickets.length + pendingDirect.length} تكليف يحتاج ردك (قبول أو رفض)</p>
+          <ul className="mt-2 space-y-1.5">
+            {pendingSpecTickets.map((t) => (
+              <li key={`s-${t.code}-${t.spec}`}>
+                <Link href={`/tickets/${t.code}`} className="group flex flex-wrap items-center gap-2 text-sm">
+                  <span className="rounded-full bg-indigo-100 px-2.5 py-0.5 text-xs font-bold text-indigo-800">{t.spec}</span>
+                  <span dir="ltr" className="font-mono font-bold text-blue-700 group-hover:underline">{t.code}</span>
+                  <span className="text-slate-600">{t.title || "بدون عنوان"}</span>
+                  <span className="mr-auto rounded-lg bg-amber-500 px-3 py-1 text-xs font-bold text-white group-hover:bg-amber-600">افتح وقرر ←</span>
+                </Link>
+              </li>
+            ))}
+            {pendingDirect.map((t) => (
+              <li key={`d-${t.id}`}>
+                <Link href={`/tickets/${t.code}`} className="group flex flex-wrap items-center gap-2 text-sm">
+                  <span className="rounded-full bg-purple-100 px-2.5 py-0.5 text-xs font-bold text-purple-800">{actor.role === "tester" ? "اختبار" : "تطوير"}</span>
+                  <span dir="ltr" className="font-mono font-bold text-blue-700 group-hover:underline">{t.code}</span>
+                  <span className="text-slate-600">{t.title || "بدون عنوان"}</span>
+                  <span className="mr-auto rounded-lg bg-amber-500 px-3 py-1 text-xs font-bold text-white group-hover:bg-amber-600">افتح وقرر ←</span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       {sp.denied && (
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
           ⛔ صلاحية الوصول لهذه الصفحة غير مفعّلة لدورك — راجع مدير النظام لو تحتاجها.
