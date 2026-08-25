@@ -989,6 +989,33 @@ export async function specialistStartOp(
   return { ok: true };
 }
 
+// معالجة التذاكر القديمة العالقة: «فشل الاختبار» قبل فيكس إعادة فتح الجولة —
+// متخصصوها ظلوا «جاهز» بلا أزرار. تُستدعى عند فتح صفحة التذكرة فتفتح الجولة تلقائياً
+export async function reopenFailedRoundIfStale(ticketId: string): Promise<boolean> {
+  const repo = await getRepo();
+  const t = await repo.ticketById(ticketId);
+  if (!t || t.is_urgent || t.dev_status !== "test_failed") return false;
+  const stale = (await repo.specialistList(ticketId)).filter((x) => x.is_current && x.status === "ready");
+  if (!stale.length) return false;
+  for (const sp of stale) {
+    await repo.specialistUpdate(sp.id, {
+      status: "accepted", ready_at: null,
+      started_at: nowIso(), reminders_sent: null,
+    });
+  }
+  await repo.eventAdd({
+    ticket_id: ticketId, type: "note.added", actor_label: "النظام",
+    old_values: null,
+    new_values: { note: `🔁 أُعيد فتح جولة التطوير تلقائياً (طلب قديم كان عالقاً بعد فشل الاختبار) — عاد للعمل: ${stale.map((s) => `${s.staff_name} (${s.spec_label})`).join("، ")}` },
+  });
+  await repo.auditAdd({
+    entity_type: "ticket", entity_id: ticketId, action: "specialists.round_reopened",
+    actor_staff_id: null, actor_label: "النظام",
+    old_values: { stuck: stale.map((s) => s.id) }, new_values: { reopened: stale.length },
+  });
+  return true;
+}
+
 // المتخصص يعلن «جاهز من ناحيتي» — ولما كل المتخصصين يجهزون تتحول التاسك «جاهز للاختبار» تلقائياً
 export async function specialistReadyOp(
   specialistId: string,

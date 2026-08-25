@@ -57,8 +57,14 @@ export default async function TicketDetailsPage({
   const sp = await searchParams;
   const repo = await getRepo();
   const perms = await permissionsForStaff(actor);
-  const ticket = await repo.ticketByCode(code);
+  let ticket = await repo.ticketByCode(code);
   if (!ticket) notFound();
+
+  // طلب قديم عالق «فشل الاختبار» ومتخصصوه «جاهز» بلا أزرار (قبل فيكس إعادة الفتح)؟ افتح الجولة تلقائياً
+  if (ticket.dev_status === "test_failed" && !ticket.is_urgent) {
+    const { reopenFailedRoundIfStale } = await import("@/lib/ops");
+    if (await reopenFailedRoundIfStale(ticket.id)) ticket = (await repo.ticketByCode(code)) ?? ticket;
+  }
 
   // نطاق الرؤية ديناميكي من الإعدادات + الاستثناء الفردي — المتخصص المسند (باك/فرونت/UX) يرى طلبه أيضاً
   const mySpecialistRoles = !ticket.is_urgent
