@@ -415,32 +415,50 @@ export async function processQueueNowAction() {
     const recovered = await repo.jobsRecoverStuck(2);
     // 2) المؤجل بسبب إعادة المحاولة يصبح مستحقاً الآن — الزر اليدوي معناه «ابعت كل حاجة دلوقتي»
     const forced = await repo.jobsForceDue();
-    // 3) معالجة دفعات كبيرة حتى يفرغ الطابور (بحد أقصى 200 حماية من التعليق)
+    // 3) معالجة دفعات حتى يفرغ الطابور — بميزانية وقت 20 ثانية حتى لا يعلّق الطلب على Cloudflare
+    //    (الباقي يُرسل بضغطة تالية أو بالدورة التلقائية)
     const totals = { processed: 0, sent: 0, retried: 0, dead: 0, skipped: 0 };
-    for (let i = 0; i < 8; i++) {
+    const deadline = Date.now() + 20_000;
+    for (let i = 0; i < 8 && Date.now() < deadline; i++) {
       const r = await processDueJobs(25);
       totals.processed += r.processed; totals.sent += r.sent;
       totals.retried += r.retried; totals.dead += r.dead; totals.skipped += r.skipped;
       if (r.processed + r.skipped === 0) break;
     }
+    const remaining = (await repo.jobsDue(1)).length > 0;
     revalidatePath("/emails");
-    return { ok: true, recovered, forced, ...totals };
+    return { ok: true, recovered, forced, remaining, ...totals };
   } catch (e) {
     return { ok: false, error: String(e).slice(0, 300) };
   }
 }
 
 // ====== قائمة غير المُرسل: كل مهمة بريد لم تصل + سببها + مستلموها المتوقعون ======
+// محسّنة للسرعة: أول 40 مهمة فقط، مع كاش مشترك للتذاكر والقوالب (لا استعلام مكرر)
 export async function listPendingEmailJobsAction() {
   await requireStaff(["admin"]);
   const repo = await getRepo();
   const { previewJobRecipients } = await import("@/lib/worker");
-  const jobs = (await repo.jobsRecent(200)).filter((j) => j.type === "send_email" && ["queued", "processing", "dead", "failed"].includes(j.status));
+  const all = (await repo.jobsRecent(200)).filter((j) => j.type === "send_email" && ["queued", "processing", "dead", "failed"].includes(j.status));
+  const jobs = all.slice(0, 40); // الأحدث أولاً — الباقي يظهر بعد معالجة الدفعة الأولى
+  const ticketCache = new Map<string, Awaited<ReturnType<typeof repo.ticketById>>>();
+  const tmplCache = new Map<string, string>();
   const out: { id: string; ticket: string; template: string; status: string; attempts: number; runAfter: string; reason: string; to: string[]; cc: string[]; excluded: string | null }[] = [];
   for (const j of jobs) {
     const p = j.payload as { ticket_id?: string; action?: { template_id?: string } };
-    const t = p.ticket_id ? await repo.ticketById(p.ticket_id) : null;
-    const tmpl = p.action?.template_id ? await repo.templateGet(p.action.template_id) : null;
+    let ticketCode = "—";
+    if (p.ticket_id) {
+      if (!ticketCache.has(p.ticket_id)) ticketCache.set(p.ticket_id, await repo.ticketById(p.ticket_id));
+      ticketCode = ticketCache.get(p.ticket_id)?.code ?? "—";
+    }
+    let tmplName = p.action?.template_id ?? "—";
+    if (p.action?.template_id) {
+      if (!tmplCache.has(p.action.template_id)) {
+        const tm = await repo.templateGet(p.action.template_id);
+        tmplCache.set(p.action.template_id, tm?.name ?? p.action.template_id);
+      }
+      tmplName = tmplCache.get(p.action.template_id)!;
+    }
     const overdue = Date.parse(j.run_after) <= Date.now();
     const reason = j.status === "dead"
       ? `فشلت نهائياً بعد ${j.attempts} محاولات — ${j.last_error ?? "بلا تفاصيل"}`
@@ -451,11 +469,11 @@ export async function listPendingEmailJobsAction() {
           : overdue
             ? "مستحقة الآن ولم يلتقطها المعالج بعد — اضغط «معالجة الآن»"
             : "مجدولة لاحقاً (تذكير/تأجيل مقصود)";
-    const rec = await previewJobRecipients(j.id).catch(() => ({ to: [], cc: [], excluded: null }));
+    const rec = await previewJobRecipients(j, ticketCache as never).catch(() => ({ to: [], cc: [], excluded: null }));
     out.push({
       id: j.id,
-      ticket: t?.code ?? "—",
-      template: tmpl?.name ?? p.action?.template_id ?? "—",
+      ticket: ticketCode,
+      template: tmplName,
       status: j.status,
       attempts: j.attempts,
       runAfter: j.run_after,
@@ -463,7 +481,7 @@ export async function listPendingEmailJobsAction() {
       to: rec.to, cc: rec.cc, excluded: rec.excluded,
     });
   }
-  return { ok: true, jobs: out };
+  return { ok: true, jobs: out, total: all.length, shown: jobs.length };
 }
 
 // ====== إرسال مهمة بريد واحدة بعينها (زر فردي في لوحة الطابور) ======

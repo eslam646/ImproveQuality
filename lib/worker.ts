@@ -5,7 +5,7 @@ import { processEstimationReminders } from "./estimation-reminders";
 import { sendMail } from "./email";
 import { renderBlocks, renderTemplate, templateVars, wrapEmail } from "./templates";
 import { DEFAULT_TEMPLATE_BLOCKS } from "./types";
-import type { Action, DevStatus, Job, Settings } from "./types";
+import type { Action, DevStatus, Job, Settings, Ticket } from "./types";
 import { nowIso } from "./util";
 
 export interface ProcessReport {
@@ -51,15 +51,14 @@ export async function processDueJobs(limit = 25): Promise<Omit<ProcessReport, "r
 export async function processOneJob(jobId: string): Promise<{ ok: boolean; error?: string }> {
   const repo = await getRepo();
   const settings = await repo.settingsGet();
-  const job = (await repo.jobsRecent(300)).find((j) => j.id === jobId);
+  const job = await repo.jobGet(jobId);
   if (!job) return { ok: false, error: "المهمة غير موجودة" };
   if (job.status === "done") return { ok: false, error: "أُرسلت بالفعل" };
   // استعادة العالقة/الميتة/المؤجلة → queued مستحقة الآن ثم قفل عادي
   await repo.jobRequeue(jobId);
   if (!(await repo.jobClaim(jobId))) return { ok: false, error: "تعذر قفل المهمة — جرّب مجدداً" };
   try {
-    const fresh = (await repo.jobsRecent(300)).find((j) => j.id === jobId) ?? job;
-    await executeJob({ ...fresh, status: "processing" }, settings);
+    await executeJob({ ...job, status: "processing" }, settings);
     await repo.jobDone(jobId);
     return { ok: true };
   } catch (e) {
@@ -70,14 +69,24 @@ export async function processOneJob(jobId: string): Promise<{ ok: boolean; error
 }
 
 // معاينة مستلمي مهمة بريد (بدون إرسال): مين هيستلم To ومين CC — بالأسماء والعناوين
-export async function previewJobRecipients(jobId: string): Promise<{ to: string[]; cc: string[]; excluded: string | null }> {
+// تقبل المهمة نفسها + كاش تذاكر مشترك لتفادي N+1 عند عرض قائمة طويلة
+export async function previewJobRecipients(
+  jobOrId: Job | string,
+  ticketCache?: Map<string, Ticket | null>,
+): Promise<{ to: string[]; cc: string[]; excluded: string | null }> {
   const repo = await getRepo();
-  const job = (await repo.jobsRecent(300)).find((j) => j.id === jobId);
+  const job = typeof jobOrId === "string" ? await repo.jobGet(jobOrId) : jobOrId;
   if (!job) return { to: [], cc: [], excluded: null };
   const action = (job.payload as { action: Action }).action;
   if (action.type !== "send_email") return { to: [], cc: [], excluded: null };
   const ticketId = (job.payload as { ticket_id: string }).ticket_id;
-  const ticket = await repo.ticketById(ticketId);
+  let ticket: Ticket | null;
+  if (ticketCache?.has(ticketId)) {
+    ticket = ticketCache.get(ticketId) ?? null;
+  } else {
+    ticket = await repo.ticketById(ticketId);
+    ticketCache?.set(ticketId, ticket);
+  }
   if (!ticket) return { to: [], cc: [], excluded: null };
   const extra = ((job.payload as { extra_vars?: { custom?: Record<string, string> | null; exclude_staff_id?: string | null } }).extra_vars) ?? {};
   const custom = extra.custom as Record<string, string> | null | undefined;

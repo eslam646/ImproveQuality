@@ -476,6 +476,10 @@ export async function createSupabaseRepo(): Promise<Repo> {
     async jobRequeue(id) {
       must(await sb.from("jobs").update({ status: "queued", run_after: nowIso() }).eq("id", id).neq("status", "done"));
     },
+    async jobGet(id) {
+      const { data } = await sb.from("jobs").select("*").eq("id", id).maybeSingle();
+      return (data as Job) ?? null;
+    },
     async jobClaim(id) {
       // قفل تفاؤلي: لا ينجح إلا لو كانت المهمة ما زالت queued
       const { data } = await sb.from("jobs").update({ status: "processing" }).eq("id", id).eq("status", "queued").select("id");

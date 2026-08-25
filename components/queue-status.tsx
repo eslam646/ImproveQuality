@@ -23,14 +23,16 @@ export function QueueStatus({ queued, dead, lastError }: { queued: number; dead:
   const [msg, setMsg] = useState<string | null>(null);
   const [detailsBusy, setDetailsBusy] = useState(false);
   const [details, setDetails] = useState<PendingJob[] | null>(null);
+  const [detailsTotal, setDetailsTotal] = useState(0);
   const [rowBusy, setRowBusy] = useState<string | null>(null);
   const [rowMsg, setRowMsg] = useState<Record<string, string>>({});
 
   const loadDetails = async () => {
     setDetailsBusy(true);
-    const r = await listPendingEmailJobsAction() as { ok: boolean; jobs?: PendingJob[] };
+    const r = await listPendingEmailJobsAction() as { ok: boolean; jobs?: PendingJob[]; total?: number };
     setDetailsBusy(false);
     setDetails(r.jobs ?? []);
+    setDetailsTotal(r.total ?? r.jobs?.length ?? 0);
   };
 
   const healthy = queued === 0 && dead === 0;
@@ -61,10 +63,10 @@ export function QueueStatus({ queued, dead, lastError }: { queued: number; dead:
             className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-bold text-white hover:bg-blue-700 disabled:opacity-50"
             onClick={async () => {
               setBusy(true); setMsg(null);
-              const r = await processQueueNowAction() as { ok: boolean; sent?: number; recovered?: number; forced?: number; dead?: number; error?: string };
+              const r = await processQueueNowAction() as { ok: boolean; sent?: number; recovered?: number; forced?: number; dead?: number; remaining?: boolean; error?: string };
               setBusy(false);
               setMsg(r.ok
-                ? `تمت ✓ أُرسل ${r.sent ?? 0}${r.recovered ? ` — استُعيد ${r.recovered} عالقة` : ""}${r.forced ? ` — عُجّل ${r.forced} مؤجلة` : ""}${r.dead ? ` — ${r.dead} فشلت نهائياً` : ""}`
+                ? `تمت ✓ أُرسل ${r.sent ?? 0}${r.recovered ? ` — استُعيد ${r.recovered} عالقة` : ""}${r.forced ? ` — عُجّل ${r.forced} مؤجلة` : ""}${r.dead ? ` — ${r.dead} فشلت نهائياً` : ""}${r.remaining ? " — ⚠️ تبقّى المزيد: اضغط مرة أخرى" : ""}`
                 : r.error ?? "فشل");
               setDetails(null);
               router.refresh();
@@ -78,6 +80,11 @@ export function QueueStatus({ queued, dead, lastError }: { queued: number; dead:
 
       {details && (
         <div className="mt-4 overflow-x-auto rounded-lg border border-slate-200 bg-white">
+          {detailsTotal > details.length && (
+            <p className="border-b border-slate-100 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-500">
+              يُعرض أول {details.length} من {detailsTotal} — عالج أو أرسل هذه الدفعة وستظهر البقية.
+            </p>
+          )}
           {details.length === 0 ? (
             <p className="p-3 text-sm text-slate-500">لا مهام بريد معلقة الآن ✓</p>
           ) : (
