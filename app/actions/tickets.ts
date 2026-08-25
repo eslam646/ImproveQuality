@@ -363,24 +363,36 @@ export async function updateUrgentProgressAction(formData: FormData) {
 
 // ═══ تحديث تقدير التنفيذ — تقدير الديف وتقدير التيست منفصلان والإجمالي يُجمع تلقائياً ═══
 export async function setEstimationAction(formData: FormData) {
-  await requireActionPermission("set_estimation");
+  const actor = await requireStaff();
   const code = String(formData.get("code") ?? "");
   const repo = await getRepo();
   const t = await repo.ticketByCode(code);
-  if (t?.is_urgent) {
+  if (!t) redirect("/dashboard");
+  const { permissionsForStaff } = await import("@/lib/auth");
+  const perms = await permissionsForStaff(actor);
+  // التيستر المسند يضع تقدير التيست بنفسه (زي المتخصص) — وصاحب صلاحية التقدير يضع الكل
+  const isAssignedTester = t.tester_id === actor.id;
+  if (!perms.set_estimation && !isAssignedTester) {
+    redirect(`/tickets/${code}?err=${enc("صلاحية التقدير غير مفعّلة لدورك — التيستر المسند يضع تقدير التيست فقط")}`);
+  }
+  if (t.is_urgent) {
     redirect(`/tickets/${code}?err=${enc("الدعم الفوري بلا تقدير زمني — يُقاس بالوقت الفعلي المستخدم لكل شخص تلقائياً")}`);
   }
   const num = (k: string) => { const v = parseFloat(String(formData.get(k) ?? "")); return Number.isFinite(v) && v >= 0 ? v : null; };
-  const dev = { days: num("dev_est_days"), hours: num("dev_est_hours") };
+  let dev = { days: num("dev_est_days"), hours: num("dev_est_hours") };
   const test = { days: num("test_est_days"), hours: num("test_est_hours") };
-  const hasSplit = dev.days != null || dev.hours != null || test.days != null || test.hours != null;
-  if (t) {
-    await setEstimationOp(t.id, hasSplit
-      ? { dev: (dev.days != null || dev.hours != null) ? dev : undefined, test: (test.days != null || test.hours != null) ? test : undefined }
-      : estFromForm(formData));
+  // التيستر بلا صلاحية تقدير: يضع تقدير التيست فقط — حقول الديف تُتجاهل
+  if (!perms.set_estimation) dev = { days: null, hours: null };
+  // بدأ الاختبار الفعلي؟ تقدير التيست مجمّد على التيستر (المدير يصحح إدارياً)
+  if (t.test_started_at && !perms.set_estimation && (test.days != null || test.hours != null)) {
+    redirect(`/tickets/${code}?err=${enc("بدأ الاختبار الفعلي — تقدير التيست مجمّد بعد البدء (المدير فقط يعدّله)")}`);
   }
+  const hasSplit = dev.days != null || dev.hours != null || test.days != null || test.hours != null;
+  await setEstimationOp(t.id, hasSplit
+    ? { dev: (dev.days != null || dev.hours != null) ? dev : undefined, test: (test.days != null || test.hours != null) ? test : undefined }
+    : estFromForm(formData));
   revalidatePath(`/tickets/${code}`);
-  redirect(`/tickets/${code}?ok=${enc("تم تحديث التقدير — الإجمالي جُمع تلقائياً من تقدير الديف والتيست ✓")}`);
+  redirect(`/tickets/${code}?ok=${enc("تم تحديث التقدير — الإجمالي جُمع تلقائياً ✓")}`);
 }
 
 // ═══ تغيير الحالة — بملاحظة إجبارية عند الرفض/فشل الاختبار ═══

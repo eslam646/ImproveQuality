@@ -774,6 +774,9 @@ export async function assignSpecialistOp(
   if (t.is_urgent) return { ok: false, error: "الدعم الفوري لا يستخدم التخصصات — تيست وديف مباشرة" };
   if (t.dev_status === "rejected") return { ok: false, error: "الطلب مرفوض نهائياً — لا إسناد عليه حتى يعيد مدخل البيانات إرساله" };
   if (FINAL_STATUSES.includes(t.dev_status)) return { ok: false, error: `الطلب ${STATUS_LABELS[t.dev_status]} — لا إسناد بعد الإقفال النهائي` };
+  // لا إسناد أثناء الاختبار الفعلي — يسبب تضارباً (التيست شغال والديف الجديد شغال في نفس الوقت)
+  if (t.dev_status === "testing") return { ok: false, error: "الاختبار الفعلي بدأ — لا إسناد متخصصين الآن. انتظر نتيجة الاختبار (نجاح/فشل) ثم أسند" };
+  if (t.dev_status === "test_passed") return { ok: false, error: "الطلب اجتاز الاختبار — لا إسناد جديد بعد الاجتياز" };
   const settings = await repo.settingsGet();
   const spec = settings.dev_specializations.find((x) => x.key === specKey && x.active);
   if (!spec) return { ok: false, error: "التخصص غير موجود أو موقوف" };
@@ -800,6 +803,11 @@ export async function assignSpecialistOp(
     est_days: est.days ?? null, est_hours: est.hours ?? null, assigned_by: assignedBy,
   });
   await recalcTicketEstimation(ticketId);
+  // إسناد جديد والتاسك «جاهز للاختبار» (والاختبار الفعلي لم يبدأ) → ترجع «تم التسليم للديف»
+  // ولو رفض الجديد لاحقاً وكل الباقين جاهزون تعود «جاهز للاختبار» تلقائياً (في respondSpecialistOp)
+  if (t.dev_status === "ready_for_test") {
+    await changeStatusOp(ticketId, "handed_to_dev", `النظام — أُسند متخصص جديد (${spec.label}: ${staff.name}) قبل بدء الاختبار`);
+  }
   await repo.auditAdd({
     entity_type: "ticket", entity_id: ticketId, action: "specialist.assigned",
     actor_staff_id: assignedBy, actor_label: actorLabel,
@@ -890,7 +898,14 @@ export async function respondSpecialistOp(
     decline_reason: decision === "declined" ? reason!.trim() : null,
     started_at: null,
   });
-  if (decision === "declined") await recalcTicketEstimation(sp.ticket_id);
+  if (decision === "declined") {
+    await recalcTicketEstimation(sp.ticket_id);
+    // رفض المتخصص الجديد وكل الباقين جاهزون؟ التاسك تعود «جاهز للاختبار» تلقائياً
+    const rest = (await repo.specialistList(sp.ticket_id)).filter((x) => x.is_current && x.id !== sp.id && x.status !== "declined");
+    if (rest.length > 0 && rest.every((x) => x.status === "ready") && ["handed_to_dev", "in_progress"].includes(t.dev_status)) {
+      await changeStatusOp(sp.ticket_id, "ready_for_test", `النظام — رفض ${actor.name} التكليف وكل الباقين جاهزون`);
+    }
+  }
 
   const actorLabel = `${actor.name} (${sp.spec_label})`;
   await repo.auditAdd({
@@ -929,6 +944,11 @@ export async function setSpecialistEstimateOp(
     return { ok: false, error: "تقدير هذا الجزء يضعه صاحبه (أو من يملك صلاحية تعديل التقدير)" };
   }
   if (sp.status === "ready") return { ok: false, error: "أعلن الجاهزية بالفعل — لا تعديل للتقدير بعد التسليم" };
+  // بعد بدء الشغل يتجمد التقدير: العدّاد انطلق على أساسه — تغييره أثناء الجري تلاعب بالمواعيد
+  // (الأدمن/صاحب صلاحية التقدير يظل قادراً على التصحيح الإداري)
+  if (sp.started_at && sp.staff_id === actor.staff_id && !actor.canEstimateOthers) {
+    return { ok: false, error: "بدأت الشغل بالفعل — تقديرك مجمّد بعد البدء (المدير فقط يعدّله)" };
+  }
   const days = est.days != null && est.days > 0 ? est.days : null;
   const hours = est.hours != null && est.hours > 0 ? est.hours : null;
   if (!days && !hours) return { ok: false, error: "حدد تقديراً فعلياً (أيام و/أو ساعات أكبر من صفر)" };

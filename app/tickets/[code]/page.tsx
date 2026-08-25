@@ -545,26 +545,42 @@ export default async function TicketDetailsPage({
                   </form>
                 )}
 
-                {canEstimate && (
-                  <form action={setEstimationAction} className="space-y-3 rounded-xl border border-slate-200 bg-slate-50/60 p-3">
-                    <input type="hidden" name="code" value={ticket.code} />
-                    <span className="block text-sm font-bold text-slate-700">⏱️ التقدير — كل طرف يضع تقديره والإجمالي يُجمع تلقائياً</span>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="w-24 text-sm font-semibold text-blue-700">👨‍💻 الديف:</span>
-                      <input name="dev_est_days" type="number" min="0" step="0.5" placeholder="أيام" className={`${inputCls} w-24`} defaultValue={ticket.dev_est_days ?? ""} />
-                      <input name="dev_est_hours" type="number" min="0" step="1" placeholder="ساعات" className={`${inputCls} w-24`} defaultValue={ticket.dev_est_hours ?? ""} />
-                    </div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="w-24 text-sm font-semibold text-purple-700">🧪 التيست:</span>
-                      <input name="test_est_days" type="number" min="0" step="0.5" placeholder="أيام" className={`${inputCls} w-24`} defaultValue={ticket.test_est_days ?? ""} />
-                      <input name="test_est_hours" type="number" min="0" step="1" placeholder="ساعات" className={`${inputCls} w-24`} defaultValue={ticket.test_est_hours ?? ""} />
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <Button type="submit" variant="secondary">حفظ التقدير</Button>
-                      <span className="text-xs text-slate-500">الإجمالي المعروض في الطلب والاستعلام والإيميلات = مجموع الاثنين (كل 8 ساعات = يوم)</span>
-                    </div>
-                  </form>
-                )}
+                {(canEstimate || (isAssignedTester && !isFinal)) && (() => {
+                  // تقدير الديف من كارت التخصصات (كل متخصص يضع تقديره) — حقول الديف هنا للتذاكر القديمة ذات المطور المباشر فقط
+                  const showDevFields = canEstimate && !!ticket.developer_id && specialists.filter((x) => x.status !== "declined").length === 0;
+                  const testerLocked = !!ticket.test_started_at && !canEstimate; // بدأ الاختبار الفعلي → تقدير التيست مجمّد (المدير يصحح إدارياً)
+                  return (
+                    <form action={setEstimationAction} className="space-y-3 rounded-xl border border-slate-200 bg-slate-50/60 p-3">
+                      <input type="hidden" name="code" value={ticket.code} />
+                      <span className="block text-sm font-bold text-slate-700">⏱️ تقدير الاختبار{showDevFields ? " والتطوير" : ""} — الإجمالي يُجمع تلقائياً</span>
+                      {!showDevFields && (
+                        <p className="text-xs text-slate-500">👨‍💻 تقدير التطوير يضعه كل متخصص بنفسه في كارت «فريق التطوير حسب التخصص» — هنا تقدير التيست فقط.</p>
+                      )}
+                      {showDevFields && (
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="w-24 text-sm font-semibold text-blue-700">👨‍💻 الديف:</span>
+                          <input name="dev_est_days" type="number" min="0" step="0.5" placeholder="أيام" className={`${inputCls} w-24`} defaultValue={ticket.dev_est_days ?? ""} />
+                          <input name="dev_est_hours" type="number" min="0" step="1" placeholder="ساعات" className={`${inputCls} w-24`} defaultValue={ticket.dev_est_hours ?? ""} />
+                        </div>
+                      )}
+                      {testerLocked ? (
+                        <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">🔒 بدأ الاختبار الفعلي — تقدير التيست مجمّد بعد البدء (المدير فقط يعدّله)</p>
+                      ) : (
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="w-24 text-sm font-semibold text-purple-700">🧪 التيست:</span>
+                          <input name="test_est_days" type="number" min="0" step="0.5" placeholder="أيام" className={`${inputCls} w-24`} defaultValue={ticket.test_est_days ?? ""} />
+                          <input name="test_est_hours" type="number" min="0" step="1" placeholder="ساعات" className={`${inputCls} w-24`} defaultValue={ticket.test_est_hours ?? ""} />
+                        </div>
+                      )}
+                      {!testerLocked && (
+                        <div className="flex items-center gap-3">
+                          <Button type="submit" variant="secondary">حفظ التقدير</Button>
+                          <span className="text-xs text-slate-500">الإجمالي = تقديرات المتخصصين + التيست (كل 8 ساعات = يوم)</span>
+                        </div>
+                      )}
+                    </form>
+                  );
+                })()}
 
                 {canUpdateUrgentProgress && !myPartDone && (
                   <UrgentProgressForm code={ticket.code} roleLabel={isAssignedTester ? "التيست" : isAssignedDev ? "المطوّر" : "مدير النظام (إجراء إداري يُسجل باسمك)"} />
