@@ -550,6 +550,16 @@ export async function createSupabaseRepo(): Promise<Repo> {
     async notifyAdd(n) {
       must(await sb.from("notifications").insert({ id: genId("ntf"), ...n, read_at: null, created_at: nowIso() }));
     },
+    async notificationExists(staffId, ticketId, message, sinceIso) {
+      let q = sb.from("notifications").select("id").eq("staff_id", staffId).eq("message", message).gte("created_at", sinceIso).limit(1);
+      q = ticketId ? q.eq("ticket_id", ticketId) : q.is("ticket_id", null);
+      const { data } = await q;
+      return (data?.length ?? 0) > 0;
+    },
+    async emailLogByJob(jobId) {
+      const { data } = await sb.from("email_log").select("*").eq("job_id", jobId).order("created_at", { ascending: false }).limit(1).maybeSingle();
+      return (data as EmailLog) ?? null;
+    },
     async notificationsList(staffId) {
       return (must(await sb.from("notifications").select("*").eq("staff_id", staffId).order("created_at", { ascending: false }).limit(50)))!;
     },

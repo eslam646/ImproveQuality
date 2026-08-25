@@ -807,6 +807,16 @@ export function createSqliteRepo(): Repo {
       db.prepare("INSERT INTO notifications (id,staff_id,ticket_id,message,read_at,created_at) VALUES (?,?,?,?,NULL,?)")
         .run(genId("ntf"), n.staff_id, n.ticket_id, n.message, nowIso());
     },
+    async notificationExists(staffId, ticketId, message, sinceIso) {
+      const r = ticketId
+        ? db.prepare("SELECT 1 FROM notifications WHERE staff_id=? AND ticket_id=? AND message=? AND created_at>=? LIMIT 1").get(staffId, ticketId, message, sinceIso)
+        : db.prepare("SELECT 1 FROM notifications WHERE staff_id=? AND ticket_id IS NULL AND message=? AND created_at>=? LIMIT 1").get(staffId, message, sinceIso);
+      return !!r;
+    },
+    async emailLogByJob(jobId) {
+      const r = db.prepare("SELECT * FROM email_log WHERE job_id=? ORDER BY created_at DESC LIMIT 1").get(jobId) as EmailLog | undefined;
+      return r ?? null;
+    },
     async notificationsList(staffId) {
       return db.prepare("SELECT * FROM notifications WHERE staff_id=? ORDER BY created_at DESC LIMIT 50").all(staffId) as Notification[];
     },

@@ -137,6 +137,10 @@ export interface Repo {
   emailLogList(page?: number, pageSize?: number, ticketId?: string): Promise<{ rows: EmailLog[]; total: number }>;
 
   notifyAdd(n: { staff_id: string; ticket_id: string | null; message: string }): Promise<void>;
+  // تحصين ضد التكرار عند استعادة مهمة عالقة: هل نفس الإشعار موجود بالفعل حديثاً؟
+  notificationExists(staffId: string, ticketId: string | null, message: string, sinceIso: string): Promise<boolean>;
+  // هل سُجل بريد لهذه المهمة من قبل؟ (استعادة مهمة عالقة أرسلت فعلاً قبل موتها = لا إرسال ثانٍ)
+  emailLogByJob(jobId: string): Promise<EmailLog | null>;
   notificationsList(staffId: string): Promise<Notification[]>;
   notificationsUnread(staffId: string): Promise<number>;
   notificationsMarkRead(staffId: string): Promise<void>;

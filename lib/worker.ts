@@ -193,6 +193,12 @@ async function executeJob(job: Job, settings: Settings, repoIn?: Repo): Promise<
     // القرار يُتخذ من داخل النظام فقط (زر «عرض الطلب» آمن: بلا هوية، والجلسة والصلاحيات هما الحكم)
     const html = wrapEmail(subject, bodyInner, settings);
 
+    // تحصين التكرار: مهمة عالقة استُعيدت بعدما أرسلت فعلاً قبل موتها؟ لا نرسل نسخة ثانية
+    // (sent/delivered = أُرسلت عبر مزود فعلي — logged+provider=log = أُرسلت في وضع التسجيل المحلي.
+    //  أما logged+provider=pending فمعناها ماتت قبل الإرسال نفسه → نُكمل الإرسال عادي)
+    const prior = await repo.emailLogByJob(job.id);
+    if (prior && (prior.status === "sent" || prior.status === "delivered" || (prior.status === "logged" && prior.provider === "log"))) return;
+
     const log = await repo.emailLogAdd({
       job_id: job.id, ticket_id: ticket.id, to_addr: to.join(", "), cc_addr: cc.join(", ") || null,
       provider: "pending", provider_msg_id: null, subject, body_html: html, status: "logged", error: null,
@@ -212,8 +218,11 @@ async function executeJob(job: Job, settings: Settings, repoIn?: Repo): Promise<
     const msg = renderTemplate(action.message, vars, { htmlEscape: false });
     const c2 = extra.custom as Record<string, string> | null | undefined;
     const res = await resolveRecipients(repo, ticket, action.to, { previous_assignee_id: c2?.previous_assignee_id ?? null, event_target_id: c2?.specialist_id ?? c2?.event_target_id ?? null });
+    // تحصين التكرار: استعادة مهمة عالقة لا تكرر نفس الإشعار لنفس الشخص (نافذة 24 ساعة)
+    const since = new Date(Date.now() - 24 * 3600_000).toISOString();
     for (const s of res.staff) {
       if (s.id === (extra.exclude_staff_id ?? null)) continue;
+      if (await repo.notificationExists(s.id, ticket.id, msg, since)) continue;
       await repo.notifyAdd({ staff_id: s.id, ticket_id: ticket.id, message: msg });
     }
     return;
