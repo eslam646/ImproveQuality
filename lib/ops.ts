@@ -676,6 +676,25 @@ export async function changeStatusOp(
     });
   }
   if (newStatus === "test_failed") {
+    // فشل الاختبار يعيد فتح الدورة تلقائياً: كل متخصص «جاهز» يعود «يعمل» بعدّاد جديد من الآن —
+    // بدون هذا كانوا يظلون «جاهز» بلا أي زر، والتذكرة تتجمد على «فشل الاختبار» للأبد
+    if (!ticket.is_urgent) {
+      const specs = (await repo.specialistList(ticket.id)).filter((x) => x.is_current && x.status === "ready");
+      for (const sp of specs) {
+        await repo.specialistUpdate(sp.id, {
+          status: "accepted", ready_at: null,
+          started_at: nowIso(), // عدّاد الإصلاح يبدأ فوراً — الفشل معناه «ارجع اشتغل الآن»
+          reminders_sent: null, // تذكيرات التقدير تبدأ من جديد لجولة الإصلاح
+        });
+      }
+      if (specs.length) {
+        await repo.eventAdd({
+          ticket_id: ticket.id, type: "note.added", actor_label: "النظام",
+          old_values: null,
+          new_values: { note: `🔁 فشل الاختبار أعاد فتح جولة تطوير جديدة — عاد للعمل: ${specs.map((s) => `${s.staff_name} (${s.spec_label})`).join("، ")} — كلٌ يسلّم «جزئي جاهز» مجدداً وعندها تعود تلقائياً «جاهز للاختبار»` },
+        });
+      }
+    }
     await emit({
       id: evt.id, type: "test.failed",
       ctx: { ticket, old, actor_label: actorLabel, vars: specialVars },
