@@ -169,6 +169,10 @@ export async function createSupabaseRepo(): Promise<Repo> {
       if (link?.expires_at && new Date(link.expires_at).getTime() <= Date.now()) return null;
       return link;
     },
+    async privateLinkGet(id) {
+      const { data } = await sb.from("private_access_links").select("*").eq("id", id).maybeSingle();
+      return (data as PrivateAccessLink) ?? null;
+    },
     async privateLinksList(staffId) {
       let q = sb.from("private_access_links").select("*").order("created_at", { ascending: false });
       if (staffId) q = q.eq("staff_id", staffId);

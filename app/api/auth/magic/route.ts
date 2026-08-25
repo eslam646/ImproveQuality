@@ -37,7 +37,8 @@ export async function GET(req: Request) {
   });
 
   const res = NextResponse.redirect(new URL("/dashboard", req.url));
-  res.cookies.set(AUTH_COOKIE, staff.id, {
+  // الجلسة مربوطة بالرابط نفسه: إلغاء الرابط من صفحة الموظفين = طرد فوري من كل جلسة فُتحت به
+  res.cookies.set(AUTH_COOKIE, `${staff.id}:${link.id}`, {
     httpOnly: true, secure: true, sameSite: "lax", path: "/",
     maxAge: 30 * 24 * 3600,
   });

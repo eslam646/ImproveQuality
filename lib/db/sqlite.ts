@@ -358,6 +358,10 @@ export function createSqliteRepo(): Repo {
       if (!r || (r.expires_at && new Date(r.expires_at).getTime() <= Date.now())) return null;
       return { ...r, active: !!r.active };
     },
+    async privateLinkGet(id) {
+      const r = db.prepare("SELECT * FROM private_access_links WHERE id=?").get(id) as (Omit<PrivateAccessLink, "active"> & { active: number }) | undefined;
+      return r ? { ...r, active: !!r.active } : null;
+    },
     async privateLinksList(staffId) {
       const rows = (staffId
         ? db.prepare("SELECT * FROM private_access_links WHERE staff_id=? ORDER BY created_at DESC").all(staffId)

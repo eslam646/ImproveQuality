@@ -30,6 +30,7 @@ export interface Repo {
 
   privateLinkCreate(input: { staff_id: string; token_hash: string; kind?: "request" | "login"; label?: string | null; created_by?: string | null }): Promise<PrivateAccessLink>;
   privateLinkByHash(tokenHash: string): Promise<PrivateAccessLink | null>;
+  privateLinkGet(id: string): Promise<PrivateAccessLink | null>;
   privateLinksList(staffId?: string): Promise<PrivateAccessLink[]>;
   privateLinkTouch(id: string): Promise<void>;
   privateLinkRevoke(id: string): Promise<void>;

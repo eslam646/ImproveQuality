@@ -20,6 +20,17 @@ export async function currentStaff(): Promise<Staff | null> {
     const cookieStore = await cookies();
     const sid = cookieStore.get(AUTH_COOKIE)?.value;
     if (!sid) return null;
+    // جلسة رابط شخصي (Magic Link): «staffId:linkId» — إلغاء الرابط يقتل الجلسة فوراً
+    const sep = sid.indexOf(":");
+    if (sep > 0) {
+      const staffId = sid.slice(0, sep);
+      const linkId = sid.slice(sep + 1);
+      const link = await repo.privateLinkGet(linkId);
+      if (!link || !link.active || link.staff_id !== staffId) return null;
+      if (link.expires_at && new Date(link.expires_at).getTime() <= Date.now()) return null;
+      const s = await repo.staffGet(staffId);
+      return s && s.active ? s : null;
+    }
     const s = await repo.staffGet(sid);
     return s && s.active ? s : null;
   }
