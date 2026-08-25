@@ -308,12 +308,20 @@ export async function setEstimationOp(
     // النمط القديم — تقدير عام واحد
     patch.est_days = est.days ?? t.est_days ?? null;
     patch.est_hours = est.hours ?? t.est_hours ?? null;
-  } else {
-    const totals = sumEstimation({ ...t, ...patch });
-    patch.est_days = totals.est_days;
-    patch.est_hours = totals.est_hours;
+    return repo.ticketUpdate(ticketId, patch);
   }
-  return repo.ticketUpdate(ticketId, patch);
+  // الإجمالي الموحّد: تقديرات المتخصصين + الديف المباشر + التيست (كل 8 ساعات = يوم)
+  await repo.ticketUpdate(ticketId, patch);
+  const specialists = await repo.specialistList(ticketId);
+  const after = (await repo.ticketById(ticketId))!;
+  let days = (after.dev_est_days ?? 0) + (after.test_est_days ?? 0);
+  let hours = (after.dev_est_hours ?? 0) + (after.test_est_hours ?? 0);
+  for (const sp of specialists.filter((x) => x.status !== "declined")) {
+    days += sp.est_days ?? 0;
+    hours += sp.est_hours ?? 0;
+  }
+  if (hours >= 8) { days += Math.floor(hours / 8); hours = hours % 8; }
+  return repo.ticketUpdate(ticketId, { est_days: days || null, est_hours: hours || null, updated_at: nowIso() });
 }
 
 // ═══ إسناد المطور (لا يتم إلا بعد التيست — القيد مفروض في الأكشن) ═══
@@ -385,6 +393,7 @@ export async function respondToAssignmentOp(
   if (ticket.urgent_ended_at) return { ok: false, error: "هذا الدعم الفوري انتهى وأُقفل — لا يمكن قبول أو رفض التكليف بعد الإقفال" };
   const myStatus = assignmentRole === "tester" ? ticket.tester_assignment_status : ticket.developer_assignment_status;
   if (myStatus === "completed") return { ok: false, error: "لقد أنهيت عملك على هذا الطلب بالفعل — لا يمكن رفض التكليف بعد الإنهاء" };
+  if (myStatus === "accepted" && decision === "accepted") return { ok: false, error: "قبلت هذا التكليف بالفعل" };
   if (decision === "declined" && (!reason || reason.trim().length < 3)) {
     return { ok: false, error: "سبب رفض التكليف إجباري" };
   }
