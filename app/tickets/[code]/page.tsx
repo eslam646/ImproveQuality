@@ -80,7 +80,7 @@ export default async function TicketDetailsPage({
   const testers = staffAll.filter((s) => s.role === "tester");
   const devs = staffAll.filter((s) => s.role === "developer");
 
-  const [events, attachments, emailLog, auditEntries, meetings, assignments, specialists] = await Promise.all([
+  const [events, attachments, emailLog, auditEntries, meetings, assignments, specialists, linkedTicket] = await Promise.all([
     repo.eventList(ticket.id),
     repo.attachmentList(ticket.id),
     perms.emails ? repo.emailLogList(1, 10, ticket.id) : Promise.resolve({ rows: [], total: 0 }),
@@ -88,6 +88,8 @@ export default async function TicketDetailsPage({
     (perms.manage_meetings || perms.join_meetings) ? repo.meetingList(ticket.id) : Promise.resolve([]),
     ticket.is_urgent ? repo.assignmentList(ticket.id) : Promise.resolve([]),
     !ticket.is_urgent ? repo.specialistList(ticket.id) : Promise.resolve([]),
+    // الطلب السابق المرتبط (طلبات «تعديل على طلب سابق») — يُعرض كرابط في بيانات الطلب
+    ticket.linked_ticket_id ? repo.ticketById(ticket.linked_ticket_id) : Promise.resolve(null),
   ]);
 
   const isAssignedTester = ticket.tester_id === actor.id;
@@ -181,6 +183,24 @@ export default async function TicketDetailsPage({
               <div><dt className="text-slate-400">رقم الطلب</dt><dd className="font-bold">#{ticket.seq}</dd></div>
               <div><dt className="text-slate-400">العميل</dt><dd className="font-semibold">{ticket.client_name}</dd></div>
               <div><dt className="text-slate-400">نوع الطلب</dt><dd>{REQUEST_TYPE_LABELS[ticket.request_type ?? "issue"]}</dd></div>
+              {linkedTicket && (
+                <div className="col-span-2 md:col-span-3">
+                  <dt className="text-slate-400">🔗 مرتبط بالطلب السابق</dt>
+                  <dd>
+                    <Link href={`/tickets/${linkedTicket.code}`} className="inline-flex flex-wrap items-center gap-2 font-semibold text-blue-700 hover:underline">
+                      <span dir="ltr" className="font-mono">{linkedTicket.code}</span>
+                      <span className="text-slate-600">— {linkedTicket.title || linkedTicket.details.slice(0, 60)}</span>
+                      <span className={`rounded-full px-2 py-0.5 text-xs font-normal ${STATUS_COLORS[linkedTicket.dev_status]}`}>{STATUS_LABELS[linkedTicket.dev_status]}</span>
+                    </Link>
+                  </dd>
+                </div>
+              )}
+              {ticket.linked_ticket_id && !linkedTicket && (
+                <div className="col-span-2 md:col-span-3">
+                  <dt className="text-slate-400">🔗 مرتبط بالطلب السابق</dt>
+                  <dd className="text-slate-500">الطلب المرتبط لم يعد موجوداً</dd>
+                </div>
+              )}
               <div className="col-span-2 md:col-span-3"><dt className="text-slate-400">عنوان الطلب / المشكلة</dt><dd className="text-base font-bold">{ticket.title || "—"}</dd></div>
               <div><dt className="text-slate-400">بريد مدخل البيانات</dt><dd>{ticket.client_contact || "—"}</dd></div>
               <div><dt className="text-slate-400">مدخل البيانات</dt><dd>{ticket.created_by_name}</dd></div>
