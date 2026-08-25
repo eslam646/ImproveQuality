@@ -5,7 +5,7 @@ import { requireStaff, permissionsForStaff } from "@/lib/auth";
 import {
   addNoteAction, assignDeveloperAction, assignTesterAction,
   assignSpecialistAction, declineAssignmentAction, removeSpecialistAction, respondSpecialistAction,
-  respondToAssignmentAction, resubmitTicketAction, setEstimationAction, specialistReadyAction, specialistStartAction,
+  respondToAssignmentAction, resubmitTicketAction, setEstimationAction, setSpecialistEstimateAction, specialistReadyAction, specialistStartAction,
 } from "@/app/actions/tickets";
 import { Badge, Button, Card, Field, Msg, selectCls, inputCls } from "@/components/ui";
 import { allowedTransitions, ALL_STATUSES, ASSIGNMENT_STATUS_LABELS, REQUEST_TYPE_LABELS, ROLE_LABELS, STATUS_COLORS, STATUS_LABELS, urgentStatusInfo } from "@/lib/labels";
@@ -344,13 +344,30 @@ export default async function TicketDetailsPage({
                             </form>
                           </div>
                         )}
-                        {mine && sp.status === "accepted" && !sp.started_at && (
-                          <form action={specialistStartAction} className="mt-3">
+                        {/* تحديد/تعديل تقدير الجزء: صاحبه (قبل التسليم) أو من يملك صلاحية التقدير — لا شغل بلا مهلة */}
+                        {(mine || canEstimate) && sp.status !== "ready" && sp.status !== "declined" && (
+                          <form action={setSpecialistEstimateAction} className="mt-3 flex flex-wrap items-center gap-2">
                             <input type="hidden" name="code" value={ticket.code} />
                             <input type="hidden" name="specialist_id" value={sp.id} />
-                            <Button type="submit">🚀 أبدأ الشغل الآن — قيد التطوير (يبدأ عدّادي)</Button>
-                            <p className="mt-1 text-xs text-slate-500">عدّاد تقديرك لا يبدأ إلا من هذه اللحظة — اضغط عندما تبدأ فعلياً.</p>
+                            <span className="text-xs font-bold text-slate-600">⏱️ {(sp.est_days || sp.est_hours) ? "تعديل تقديري:" : "حدد تقديرك (إجباري قبل البدء):"}</span>
+                            <input name="est_days" type="number" min="0" step="0.5" defaultValue={sp.est_days ?? ""} placeholder="أيام" className={`${inputCls} w-24`} />
+                            <input name="est_hours" type="number" min="0" step="1" defaultValue={sp.est_hours ?? ""} placeholder="ساعات" className={`${inputCls} w-24`} />
+                            <Button type="submit" variant="secondary">حفظ التقدير</Button>
                           </form>
+                        )}
+                        {mine && sp.status === "accepted" && !sp.started_at && (
+                          (sp.est_days || sp.est_hours) ? (
+                            <form action={specialistStartAction} className="mt-3">
+                              <input type="hidden" name="code" value={ticket.code} />
+                              <input type="hidden" name="specialist_id" value={sp.id} />
+                              <Button type="submit">🚀 أبدأ الشغل الآن — قيد التطوير (يبدأ عدّادي)</Button>
+                              <p className="mt-1 text-xs text-slate-500">عدّاد تقديرك لا يبدأ إلا من هذه اللحظة — اضغط عندما تبدأ فعلياً.</p>
+                            </form>
+                          ) : (
+                            <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">
+                              ⚠️ حدد تقديرك أولاً — لا يمكن بدء الشغل بلا مهلة (وإلا فلا عدّاد ولا تذكيرات ولا حساب تأخير)
+                            </p>
+                          )
                         )}
                         {mine && sp.status === "accepted" && sp.started_at && (
                           <form action={specialistReadyAction} className="mt-3 flex flex-wrap gap-2">

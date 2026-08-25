@@ -505,6 +505,25 @@ export async function specialistStartAction(formData: FormData) {
   redirect(`/tickets/${code}?${r.ok ? `ok=${enc("🚀 بدأت الشغل — عدّاد تقديرك يعمل الآن والتاسك قيد التطوير")}` : `err=${enc(r.error ?? "تعذر التسجيل")}`}`);
 }
 
+// المتخصص يحدد/يعدل تقدير جزئه — أو أي شخص يملك صلاحية «تعديل التقدير» (أدمن مثلاً)
+export async function setSpecialistEstimateAction(formData: FormData) {
+  const actor = await requireStaff();
+  const code = String(formData.get("code") ?? "");
+  const specialistId = String(formData.get("specialist_id") ?? "");
+  const days = parseFloat(String(formData.get("est_days") ?? "")) || null;
+  const hours = parseFloat(String(formData.get("est_hours") ?? "")) || null;
+  const { permissionsForStaff } = await import("@/lib/auth");
+  const perms = await permissionsForStaff(actor);
+  const { setSpecialistEstimateOp } = await import("@/lib/ops");
+  const r = await setSpecialistEstimateOp(
+    specialistId,
+    { staff_id: actor.id, name: actor.name, canEstimateOthers: !!perms.set_estimation },
+    { days, hours },
+  );
+  revalidatePath(`/tickets/${code}`);
+  redirect(`/tickets/${code}?${r.ok ? `ok=${enc("⏱️ سُجل تقدير الجزء وأُعيد حساب الإجمالي ✓")}` : `err=${enc(r.error ?? "تعذر التسجيل")}`}`);
+}
+
 // المتخصص يعلن الجاهزية — ولو الجميع جاهز تتحول التاسك «جاهز للاختبار»
 export async function specialistReadyAction(formData: FormData) {
   const actor = await requireStaff(["developer", "admin"]);

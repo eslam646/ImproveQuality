@@ -893,6 +893,45 @@ export async function respondSpecialistOp(
 
 // المتخصص يبدأ الشغل فعلياً — هنا فقط يبدأ عدّاد تقديره (القبول التزام والبدء شغل)
 // وأول متخصص يبدأ يحوّل التاسك «قيد التطوير» تلقائياً
+// المتخصص يحدد/يعدل تقدير جزئه بنفسه (أو من يملك صلاحية «تعديل التقدير») —
+// بلا تقدير لا يبدأ الشغل أصلاً، فلا يوجد «شغل إلى ما لا نهاية» بلا عدّاد ولا تذكيرات
+export async function setSpecialistEstimateOp(
+  specialistId: string,
+  actor: { staff_id: string; name: string; canEstimateOthers?: boolean },
+  est: { days?: number | null; hours?: number | null },
+): Promise<{ ok: boolean; error?: string }> {
+  const repo = await getRepo();
+  const sp = await repo.specialistGet(specialistId);
+  if (!sp || !sp.is_current) return { ok: false, error: "التكليف غير موجود أو سُحب" };
+  if (sp.staff_id !== actor.staff_id && !actor.canEstimateOthers) {
+    return { ok: false, error: "تقدير هذا الجزء يضعه صاحبه (أو من يملك صلاحية تعديل التقدير)" };
+  }
+  if (sp.status === "ready") return { ok: false, error: "أعلن الجاهزية بالفعل — لا تعديل للتقدير بعد التسليم" };
+  const days = est.days != null && est.days > 0 ? est.days : null;
+  const hours = est.hours != null && est.hours > 0 ? est.hours : null;
+  if (!days && !hours) return { ok: false, error: "حدد تقديراً فعلياً (أيام و/أو ساعات أكبر من صفر)" };
+  const t = await repo.ticketById(sp.ticket_id);
+  if (!t) return { ok: false, error: "الطلب غير موجود" };
+
+  const hadEstimate = (sp.est_days ?? 0) > 0 || (sp.est_hours ?? 0) > 0;
+  await repo.specialistUpdate(sp.id, { est_days: days, est_hours: hours });
+  await recalcTicketEstimation(sp.ticket_id);
+  const fmt = `${days ? `${days} يوم` : ""}${days && hours ? " + " : ""}${hours ? `${hours} ساعة` : ""}`;
+  const actorLabel = `${actor.name} (${sp.spec_label})`;
+  await repo.auditAdd({
+    entity_type: "ticket", entity_id: sp.ticket_id, action: "specialist.estimated",
+    actor_staff_id: actor.staff_id, actor_label: actorLabel,
+    old_values: { est_days: sp.est_days, est_hours: sp.est_hours },
+    new_values: { est_days: days, est_hours: hours },
+  });
+  await repo.eventAdd({
+    ticket_id: sp.ticket_id, type: "note.added", actor_label: actorLabel,
+    old_values: null,
+    new_values: { note: `⏱️ ${hadEstimate ? "عدّل" : "حدد"} ${actor.name} تقدير جزء «${sp.spec_label}»: ${fmt}` },
+  });
+  return { ok: true };
+}
+
 export async function specialistStartOp(
   specialistId: string,
   actor: { staff_id: string; name: string },
@@ -905,6 +944,10 @@ export async function specialistStartOp(
   if (sp.status === "ready") return { ok: false, error: "أعلنت الجاهزية بالفعل — انتهى دورك" };
   if (sp.status !== "accepted") return { ok: false, error: "لا يمكن بدء الشغل على هذا التكليف" };
   if (sp.started_at) return { ok: false, error: "بدأت الشغل بالفعل — عدّادك يعمل" };
+  // لا بدء بلا تقدير: بدون مهلة محددة لا يوجد عدّاد ولا تذكيرات — والشغل يصبح مفتوحاً بلا نهاية
+  if (!((sp.est_days ?? 0) > 0 || (sp.est_hours ?? 0) > 0)) {
+    return { ok: false, error: "حدد تقدير جزئك أولاً (أيام/ساعات) ثم ابدأ — لا شغل بلا مهلة وعدّاد" };
+  }
   const t = await repo.ticketById(sp.ticket_id);
   if (!t) return { ok: false, error: "الطلب غير موجود" };
 
