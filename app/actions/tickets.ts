@@ -109,6 +109,12 @@ export async function createTicketAction(formData: FormData) {
   // القاعدة الذهبية: لا مطوّر قبل المختبِر أولاً
   if (developer_id && !tester_id) fail("حدّد فريق الاختبار أولاً — لا يُسنَد المطوّر إلا بعد التيست");
 
+  // المرفق (اختياري/إجباري حسب تصميم النموذج) — يُرفع من المتصفح ويصل كمرجع «اسم|رابط»
+  const attachment_ref = String(formData.get("attachment_ref") ?? "").trim();
+  if (show("attachment") && need("attachment") && !/^[^|]{1,200}\|(https?:\/\/|local:\/\/)/.test(attachment_ref)) {
+    fail("المرفق إجباري — ارفع صورة أو فيديو أو ملفاً يوضح الطلب");
+  }
+
   // الحقول المخصصة الظاهرة في النموذج الداخلي (cf_<key>) — مع تحقق الإجبارية
   const custom: Record<string, string> = {};
   for (const cf of settings.custom_fields.filter((f) => f.internal)) {
@@ -141,6 +147,22 @@ export async function createTicketAction(formData: FormData) {
     actor: { staff_id: creator.id, label }, source: "internal",
     custom_data: custom,
   });
+  // حفظ المرفق المرفوع مع الطلب وتسجيله في سجل الأحداث
+  if (attachment_ref && attachment_ref.includes("|")) {
+    const [attName, attUrl] = [attachment_ref.slice(0, attachment_ref.indexOf("|")), attachment_ref.slice(attachment_ref.indexOf("|") + 1)];
+    if (attName && attUrl) {
+      const { genId } = await import("@/lib/util");
+      const isLocal = attUrl.startsWith("local://");
+      await repo.attachmentAdd({
+        id: genId("att"), ticket_id: ticket.id, file_name: attName, size_bytes: 0,
+        path: isLocal ? attUrl.replace("local://", "") : attUrl, driver: isLocal ? "local" : "supabase", uploaded_by: creator.name,
+      });
+      await repo.eventAdd({
+        ticket_id: ticket.id, type: "attachment.added", actor_label: label,
+        old_values: null, new_values: { file: attName },
+      });
+    }
+  }
   revalidatePath("/dashboard");
   redirect(`/tickets/${ticket.code}?created=1`);
 }

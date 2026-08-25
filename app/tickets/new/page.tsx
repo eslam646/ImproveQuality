@@ -4,6 +4,7 @@ import { createTicketAction } from "@/app/actions/tickets";
 import { Card, Field, inputCls, Msg, selectCls } from "@/components/ui";
 import { SubmitButton } from "@/components/submit-button";
 import { CustomFieldInput } from "@/components/public-forms";
+import { UrgentAttachmentInput } from "@/components/urgent-attachment-input";
 import { REQUEST_TYPE_LABELS } from "@/lib/labels";
 
 export const dynamic = "force-dynamic";
@@ -88,6 +89,11 @@ export default async function NewTicketPage({
                 <option value="" disabled>— اختر مسؤول الاختبار —</option>
                 {testers.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
               </select>
+            </Field>
+          )}
+          {show("attachment") && (
+            <Field style={{ order: orderOf("attachment") }} label={`${labelOf("attachment")}${star("attachment")}`} hint="صورة الشاشة أو الفيديو أو ملف اللوج — يوضح الطلب فوراً">
+              <UrgentAttachmentInput required={req("attachment")} />
             </Field>
           )}
           {settings.custom_fields.filter((f) => f.internal).length > 0 && (
