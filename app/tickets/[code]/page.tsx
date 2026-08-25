@@ -110,10 +110,12 @@ export default async function TicketDetailsPage({
   const urgentNeedsDev = !!ticket.is_urgent && !ticket.urgent_ended_at && !ticket.developer_id;
   // الطلب المرفوض مجمّد بالكامل: لا إسناد ولا تقدير حتى يعيد صاحبه إرساله (السيرفر يمنعها أيضاً)
   const isRejected = !ticket.is_urgent && ticket.dev_status === "rejected";
-  const canAssignTester = perms.assign_tester && !isRejected && (!ticket.is_urgent || urgentNeedsTester);
-  const canAssignDev = perms.assign_developer && !isRejected && (!ticket.is_urgent || urgentNeedsDev);
+  // مقفول نهائياً (مغلق/تم الإصلاح/مرفوض): لا إسناد ولا تقدير ولا أزرار متخصصين — قراءة فقط
+  const isFinal = !ticket.is_urgent && ["fixed", "closed", "rejected"].includes(ticket.dev_status);
+  const canAssignTester = perms.assign_tester && !isFinal && (!ticket.is_urgent || urgentNeedsTester);
+  const canAssignDev = perms.assign_developer && !isFinal && (!ticket.is_urgent || urgentNeedsDev);
   // الدعم الفوري بلا استيميشن إطلاقاً — يُقاس بالوقت الفعلي المستخدم لكل شخص
-  const canEstimate = perms.set_estimation && !ticket.is_urgent && !isRejected;
+  const canEstimate = perms.set_estimation && !ticket.is_urgent && !isFinal;
   const canUpload = perms.upload_attachment && (perms.view_all_tickets || isAssignedTester || isAssignedDev || mySpecialistRoles.length > 0);
   const acceptedForRole = actor.role === "tester" ? ticket.tester_assignment_status === "accepted" : actor.role === "developer" ? ticket.developer_assignment_status === "accepted" : true;
   // الدعم الفوري «طلب جانبي»: لا حالة تطوير له إطلاقاً — حالته من دورة حياته فقط (قبول/اعتذار/جاري/انتهى)
@@ -333,7 +335,7 @@ export default async function TicketDetailsPage({
                           </form>
                         )}
 
-                        {mine && sp.status === "pending" && (
+                        {!isFinal && mine && sp.status === "pending" && (
                           <div className="mt-3 grid gap-2 md:grid-cols-2">
                             <form action={respondSpecialistAction}>
                               <input type="hidden" name="code" value={ticket.code} />
@@ -351,7 +353,7 @@ export default async function TicketDetailsPage({
                           </div>
                         )}
                         {/* تحديد/تعديل تقدير الجزء: صاحبه (قبل التسليم) أو من يملك صلاحية التقدير — لا شغل بلا مهلة */}
-                        {(mine || canEstimate) && sp.status !== "ready" && sp.status !== "declined" && (
+                        {!isFinal && (mine || canEstimate) && sp.status !== "ready" && sp.status !== "declined" && (
                           <form action={setSpecialistEstimateAction} className="mt-3 flex flex-wrap items-center gap-2">
                             <input type="hidden" name="code" value={ticket.code} />
                             <input type="hidden" name="specialist_id" value={sp.id} />
@@ -361,7 +363,7 @@ export default async function TicketDetailsPage({
                             <Button type="submit" variant="secondary">حفظ التقدير</Button>
                           </form>
                         )}
-                        {mine && sp.status === "accepted" && !sp.started_at && (
+                        {!isFinal && mine && sp.status === "accepted" && !sp.started_at && (
                           (sp.est_days || sp.est_hours) ? (
                             <form action={specialistStartAction} className="mt-3">
                               <input type="hidden" name="code" value={ticket.code} />
@@ -375,7 +377,7 @@ export default async function TicketDetailsPage({
                             </p>
                           )
                         )}
-                        {mine && sp.status === "accepted" && sp.started_at && (
+                        {!isFinal && mine && sp.status === "accepted" && sp.started_at && (
                           <form action={specialistReadyAction} className="mt-3 flex flex-wrap gap-2">
                             <input type="hidden" name="code" value={ticket.code} />
                             <input type="hidden" name="specialist_id" value={sp.id} />

@@ -4,7 +4,7 @@ import type { Repo } from "./db";
 import { emit } from "./engine";
 import { sendMail } from "./email";
 import { renderBlocks, renderTemplate, templateVars, wrapEmail } from "./templates";
-import { ROLE_LABELS, STATUS_LABELS } from "./labels";
+import { FINAL_STATUSES, ROLE_LABELS, STATUS_LABELS } from "./labels";
 import { DEFAULT_TEMPLATE_BLOCKS } from "./types";
 import type { AutomationContext, DevStatus, RequestType, Role, Settings, Staff, Ticket, TicketKind, TicketPriority } from "./types";
 import { escapeHtml, genTicketCode, isEmail, nowIso } from "./util";
@@ -773,6 +773,7 @@ export async function assignSpecialistOp(
   if (!t) return { ok: false, error: "الطلب غير موجود" };
   if (t.is_urgent) return { ok: false, error: "الدعم الفوري لا يستخدم التخصصات — تيست وديف مباشرة" };
   if (t.dev_status === "rejected") return { ok: false, error: "الطلب مرفوض نهائياً — لا إسناد عليه حتى يعيد مدخل البيانات إرساله" };
+  if (FINAL_STATUSES.includes(t.dev_status)) return { ok: false, error: `الطلب ${STATUS_LABELS[t.dev_status]} — لا إسناد بعد الإقفال النهائي` };
   const settings = await repo.settingsGet();
   const spec = settings.dev_specializations.find((x) => x.key === specKey && x.active);
   if (!spec) return { ok: false, error: "التخصص غير موجود أو موقوف" };
@@ -828,6 +829,7 @@ export async function removeSpecialistOp(
   if (!sp || !sp.is_current) return { ok: false, error: "التكليف غير موجود أو أُزيل بالفعل" };
   const t = await repo.ticketById(sp.ticket_id);
   if (!t) return { ok: false, error: "الطلب غير موجود" };
+  if (FINAL_STATUSES.includes(t.dev_status)) return { ok: false, error: `الطلب ${STATUS_LABELS[t.dev_status]} — لا إجراءات بعد الإقفال النهائي` };
   if (sp.status === "ready") return { ok: false, error: "أعلن جاهزيته بالفعل — لا معنى لإزالته بعد إنهاء جزئه" };
 
   await repo.specialistRemove(sp.id);
@@ -881,6 +883,7 @@ export async function respondSpecialistOp(
 
   const t = await repo.ticketById(sp.ticket_id);
   if (!t) return { ok: false, error: "الطلب غير موجود" };
+  if (FINAL_STATUSES.includes(t.dev_status)) return { ok: false, error: `الطلب ${STATUS_LABELS[t.dev_status]} — لا إجراءات بعد الإقفال النهائي` };
   // القبول التزام فقط — العدّاد لا يبدأ إلا عندما يضغط «أبدأ الشغل» بنفسه
   await repo.specialistUpdate(sp.id, {
     status: decision, responded_at: nowIso(),
@@ -931,6 +934,7 @@ export async function setSpecialistEstimateOp(
   if (!days && !hours) return { ok: false, error: "حدد تقديراً فعلياً (أيام و/أو ساعات أكبر من صفر)" };
   const t = await repo.ticketById(sp.ticket_id);
   if (!t) return { ok: false, error: "الطلب غير موجود" };
+  if (FINAL_STATUSES.includes(t.dev_status)) return { ok: false, error: `الطلب ${STATUS_LABELS[t.dev_status]} — لا إجراءات بعد الإقفال النهائي` };
 
   const hadEstimate = (sp.est_days ?? 0) > 0 || (sp.est_hours ?? 0) > 0;
   await repo.specialistUpdate(sp.id, { est_days: days, est_hours: hours });
@@ -969,6 +973,7 @@ export async function specialistStartOp(
   }
   const t = await repo.ticketById(sp.ticket_id);
   if (!t) return { ok: false, error: "الطلب غير موجود" };
+  if (FINAL_STATUSES.includes(t.dev_status)) return { ok: false, error: `الطلب ${STATUS_LABELS[t.dev_status]} — لا إجراءات بعد الإقفال النهائي` };
 
   await repo.specialistUpdate(sp.id, { started_at: nowIso() });
   const actorLabel = `${actor.name} (${sp.spec_label})`;
@@ -995,7 +1000,12 @@ export async function reopenFailedRoundIfStale(ticketId: string): Promise<boolea
   const repo = await getRepo();
   const t = await repo.ticketById(ticketId);
   if (!t || t.is_urgent || t.dev_status !== "test_failed") return false;
-  const stale = (await repo.specialistList(ticketId)).filter((x) => x.is_current && x.status === "ready");
+  // «عالق قديم» = أعلن جاهزيته قبل لحظة فشل الاختبار نفسها (ready_at أقدم من آخر تغيير حالة).
+  // من سلّم جزأه بعد الفشل (جولة الإصلاح الجارية) لا يُلمس إطلاقاً — وإلا دخلنا في حلقة إعادة فتح لا تنتهي
+  const failedAt = Date.parse(t.last_status_change);
+  const stale = (await repo.specialistList(ticketId)).filter((x) =>
+    x.is_current && x.status === "ready" && x.ready_at && Date.parse(x.ready_at) <= failedAt,
+  );
   if (!stale.length) return false;
   for (const sp of stale) {
     await repo.specialistUpdate(sp.id, {
@@ -1031,6 +1041,7 @@ export async function specialistReadyOp(
   if (!sp.started_at) return { ok: false, error: "ابدأ الشغل أولاً («قيد التطوير») ثم أعلن الجاهزية عند الانتهاء" };
   const t = await repo.ticketById(sp.ticket_id);
   if (!t) return { ok: false, error: "الطلب غير موجود" };
+  if (FINAL_STATUSES.includes(t.dev_status)) return { ok: false, error: `الطلب ${STATUS_LABELS[t.dev_status]} — لا إجراءات بعد الإقفال النهائي` };
 
   await repo.specialistUpdate(sp.id, { status: "ready", ready_at: nowIso() });
   const actorLabel = `${actor.name} (${sp.spec_label})`;
