@@ -710,6 +710,16 @@ export function createSqliteRepo(): Repo {
       const rows = db.prepare("SELECT * FROM jobs ORDER BY created_at DESC LIMIT ?").all(limit) as Record<string, unknown>[];
       return rows.map(mapJob);
     },
+    async jobsRecoverStuck(olderThanMinutes) {
+      const cutoff = new Date(Date.now() - olderThanMinutes * 60000).toISOString();
+      const r = db.prepare("UPDATE jobs SET status='queued', run_after=?, last_error=COALESCE(last_error,'استُعيدت بعد انقطاع المعالجة') WHERE status='processing' AND created_at<?")
+        .run(nowIso(), cutoff);
+      return r.changes;
+    },
+    async jobsForceDue() {
+      const r = db.prepare("UPDATE jobs SET run_after=? WHERE status='queued' AND run_after>?").run(nowIso(), nowIso());
+      return r.changes;
+    },
     async jobClaim(id) {
       const r = db.prepare("UPDATE jobs SET status='processing' WHERE id=? AND status='queued'").run(id);
       return r.changes > 0;

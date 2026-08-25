@@ -462,6 +462,17 @@ export async function createSupabaseRepo(): Promise<Repo> {
     async jobsRecent(limit) {
       return (must(await sb.from("jobs").select("*").order("created_at", { ascending: false }).limit(limit)) as Job[]) ?? [];
     },
+    async jobsRecoverStuck(olderThanMinutes) {
+      const cutoff = new Date(Date.now() - olderThanMinutes * 60000).toISOString();
+      const { data } = await sb.from("jobs").update({ status: "queued", run_after: nowIso() })
+        .eq("status", "processing").lt("created_at", cutoff).select("id");
+      return data?.length ?? 0;
+    },
+    async jobsForceDue() {
+      const { data } = await sb.from("jobs").update({ run_after: nowIso() })
+        .eq("status", "queued").gt("run_after", nowIso()).select("id");
+      return data?.length ?? 0;
+    },
     async jobClaim(id) {
       // قفل تفاؤلي: لا ينجح إلا لو كانت المهمة ما زالت queued
       const { data } = await sb.from("jobs").update({ status: "processing" }).eq("id", id).eq("status", "queued").select("id");

@@ -48,6 +48,8 @@ export async function processDueJobs(limit = 25): Promise<Omit<ProcessReport, "r
 }
 
 export async function processAll(): Promise<ProcessReport> {
+  // استعادة العالق «قيد المعالجة» (انقطعت عمليته على Cloudflare قبل الإرسال) — يعود للطابور تلقائياً
+  try { const repo = await getRepo(); await repo.jobsRecoverStuck(5); } catch (e) { console.error("recover stuck:", e); }
   // التذكيرات المجدولة كلها محصّنة — فشل أي نوع منها لا يوقف إرسال الإيميلات
   let remindersEnqueued = 0;
   try { remindersEnqueued = await enqueueStaleReminders(); } catch (e) { console.error("stale reminders:", e); }

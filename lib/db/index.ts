@@ -111,6 +111,10 @@ export interface Repo {
   }): Promise<"created" | "dup">;
   jobsDue(limit: number): Promise<Job[]>;
   jobsRecent(limit: number): Promise<Job[]>;
+  // استعادة العالق: processing قديمة (ماتت عمليتها) تعود queued — وتُرجع عدد المُستعاد
+  jobsRecoverStuck(olderThanMinutes: number): Promise<number>;
+  // إجبار المؤجل: كل queued مؤجلة (backoff) تصبح مستحقة الآن — للزر اليدوي
+  jobsForceDue(): Promise<number>;
   jobClaim(id: string): Promise<boolean>;
   jobDone(id: string): Promise<void>;
   jobFail(id: string, err: string, retryAtIso: string | null): Promise<void>;

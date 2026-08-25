@@ -408,12 +408,57 @@ export async function togglePublicLinkAction(key: PublicLinkKey, enabled: boolea
 // ====== تشغيل طابور البريد يدوياً + تشخيص فوري (يظهر أعلى سجل البريد) ======
 export async function processQueueNowAction() {
   await requireStaff(["admin"]);
-  const { processAll } = await import("@/lib/worker");
+  const repo = await getRepo();
+  const { processDueJobs } = await import("@/lib/worker");
   try {
-    const report = await processAll();
+    // 1) استعادة العالق في «قيد المعالجة» (ماتت عمليته على Cloudflare قبل الإرسال)
+    const recovered = await repo.jobsRecoverStuck(2);
+    // 2) المؤجل بسبب إعادة المحاولة يصبح مستحقاً الآن — الزر اليدوي معناه «ابعت كل حاجة دلوقتي»
+    const forced = await repo.jobsForceDue();
+    // 3) معالجة دفعات كبيرة حتى يفرغ الطابور (بحد أقصى 200 حماية من التعليق)
+    const totals = { processed: 0, sent: 0, retried: 0, dead: 0, skipped: 0 };
+    for (let i = 0; i < 8; i++) {
+      const r = await processDueJobs(25);
+      totals.processed += r.processed; totals.sent += r.sent;
+      totals.retried += r.retried; totals.dead += r.dead; totals.skipped += r.skipped;
+      if (r.processed + r.skipped === 0) break;
+    }
     revalidatePath("/emails");
-    return { ok: true, ...report };
+    return { ok: true, recovered, forced, ...totals };
   } catch (e) {
     return { ok: false, error: String(e).slice(0, 300) };
   }
+}
+
+// ====== قائمة غير المُرسل: كل مهمة بريد لم تصل + سببها الفعلي ======
+export async function listPendingEmailJobsAction() {
+  await requireStaff(["admin"]);
+  const repo = await getRepo();
+  const jobs = (await repo.jobsRecent(200)).filter((j) => j.type === "send_email" && ["queued", "processing", "dead", "failed"].includes(j.status));
+  const out: { id: string; ticket: string; template: string; status: string; attempts: number; runAfter: string; reason: string }[] = [];
+  for (const j of jobs) {
+    const p = j.payload as { ticket_id?: string; action?: { template_id?: string } };
+    const t = p.ticket_id ? await repo.ticketById(p.ticket_id) : null;
+    const tmpl = p.action?.template_id ? await repo.templateGet(p.action.template_id) : null;
+    const overdue = Date.parse(j.run_after) <= Date.now();
+    const reason = j.status === "dead"
+      ? `فشلت نهائياً بعد ${j.attempts} محاولات — ${j.last_error ?? "بلا تفاصيل"}`
+      : j.status === "processing"
+        ? "عالقة «قيد المعالجة» — انقطعت العملية قبل الإرسال (اضغط معالجة الآن لاستعادتها)"
+        : j.last_error
+          ? `تنتظر إعادة المحاولة (محاولة ${j.attempts}/${j.max_attempts}) — آخر خطأ: ${j.last_error}`
+          : overdue
+            ? "مستحقة الآن ولم يلتقطها المعالج بعد — اضغط «معالجة الآن»"
+            : "مجدولة لاحقاً (تذكير/تأجيل مقصود)";
+    out.push({
+      id: j.id,
+      ticket: t?.code ?? "—",
+      template: tmpl?.name ?? p.action?.template_id ?? "—",
+      status: j.status,
+      attempts: j.attempts,
+      runAfter: j.run_after,
+      reason: reason.slice(0, 300),
+    });
+  }
+  return { ok: true, jobs: out };
 }
