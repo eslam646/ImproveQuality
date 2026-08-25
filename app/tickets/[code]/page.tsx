@@ -102,14 +102,17 @@ export default async function TicketDetailsPage({
   // بعد ما يخلص أحد الطرفين أو أثناء شغله لا معنى لإعادة الإسناد ولا يظهر النموذج
   const urgentNeedsTester = !!ticket.is_urgent && !ticket.urgent_ended_at && !ticket.tester_id;
   const urgentNeedsDev = !!ticket.is_urgent && !ticket.urgent_ended_at && !ticket.developer_id;
-  const canAssignTester = perms.assign_tester && (!ticket.is_urgent || urgentNeedsTester);
-  const canAssignDev = perms.assign_developer && (!ticket.is_urgent || urgentNeedsDev);
+  // الطلب المرفوض مجمّد بالكامل: لا إسناد ولا تقدير حتى يعيد صاحبه إرساله (السيرفر يمنعها أيضاً)
+  const isRejected = !ticket.is_urgent && ticket.dev_status === "rejected";
+  const canAssignTester = perms.assign_tester && !isRejected && (!ticket.is_urgent || urgentNeedsTester);
+  const canAssignDev = perms.assign_developer && !isRejected && (!ticket.is_urgent || urgentNeedsDev);
   // الدعم الفوري بلا استيميشن إطلاقاً — يُقاس بالوقت الفعلي المستخدم لكل شخص
-  const canEstimate = perms.set_estimation && !ticket.is_urgent;
+  const canEstimate = perms.set_estimation && !ticket.is_urgent && !isRejected;
   const canUpload = perms.upload_attachment && (perms.view_all_tickets || isAssignedTester || isAssignedDev || mySpecialistRoles.length > 0);
   const acceptedForRole = actor.role === "tester" ? ticket.tester_assignment_status === "accepted" : actor.role === "developer" ? ticket.developer_assignment_status === "accepted" : true;
   // الدعم الفوري «طلب جانبي»: لا حالة تطوير له إطلاقاً — حالته من دورة حياته فقط (قبول/اعتذار/جاري/انتهى)
-  const transitions = ticket.is_urgent || !perms.change_status || !acceptedForRole
+  // الطلب المرفوض: لا تغيير حالة لغير الأدمن — يعود للحياة فقط بإعادة الإرسال من صاحبه
+  const transitions = ticket.is_urgent || !perms.change_status || !acceptedForRole || (isRejected && actor.role !== "admin")
     ? []
     : actor.role === "support" ? ALL_STATUSES.filter((s) => s !== ticket.dev_status) : allowedTransitions(actor.role, ticket.dev_status);
   const noteLabel = actor.role === "developer" ? "ملاحظات الديف" : actor.role === "tester" ? "ملاحظات التيست" : "ملاحظة مدخل البيانات";
@@ -285,7 +288,8 @@ export default async function TicketDetailsPage({
           )}
 
           {/* المتخصصون: باك / فرونت / UX — كل تخصص شخص وتقدير وعدّاد مستقل */}
-          {!ticket.is_urgent && (specialists.length > 0 || canAssignDev) && (
+          {/* الطلب المرفوض مجمّد: لا كارت تطوير أصلاً حتى يعيد صاحبه إرساله (السيرفر يمنع الإسناد أيضاً) */}
+          {!ticket.is_urgent && ticket.dev_status !== "rejected" && (specialists.length > 0 || canAssignDev) && (
             <Card title="🧩 فريق التطوير حسب التخصص">
               {specialists.length > 0 && (
                 <ul className="mb-4 space-y-2">
@@ -371,7 +375,7 @@ export default async function TicketDetailsPage({
                   ⚠️ القاعدة الذهبية: التيست يستلم الطلب أولاً ويحوّله «تم التسليم للديف» — بعدها أسند المتخصصين هنا.
                 </div>
               )}
-              {canAssignDev && settings.dev_specializations.filter((x) => x.active).length > 0 && !(specialists.length === 0 && ["new", "needs_info"].includes(ticket.dev_status)) && (
+              {canAssignDev && settings.dev_specializations.filter((x) => x.active).length > 0 && !(specialists.length === 0 && ["new", "needs_info"].includes(ticket.dev_status)) && !["rejected", "closed"].includes(ticket.dev_status) && (
                 <form action={assignSpecialistAction} className="flex flex-wrap items-end gap-2 rounded-xl border border-indigo-100 bg-indigo-50/40 p-3">
                   <input type="hidden" name="code" value={ticket.code} />
                   <label className="text-sm"><span className="mb-1 block text-xs font-bold text-slate-600">التخصص ← المطور <span className="font-normal text-slate-400">(القائمة تتصفى حسب تخصص الموظف)</span></span>
