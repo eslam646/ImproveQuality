@@ -509,6 +509,9 @@ export async function updateUrgentProgressOp(
   const isDev = actor.role === "developer" && t.developer_id === actor.staff_id;
   const isAdmin = actor.role === "admin";
   if (!isTester && !isDev && !isAdmin) return { ok: false, error: "هذه النقطة غير مسندة إليك حالياً" };
+  // من أنهى جزءه لا يحدّث موقفه مرة أخرى — لا تكرار للإنهاء ولا رجوع بعده
+  const myStatus = isTester ? t.tester_assignment_status : isDev ? t.developer_assignment_status : null;
+  if (myStatus === "completed") return { ok: false, error: "أنهيت جزءك بالفعل — الإقفال الرسمي بانتظار باقي المكلفين" };
 
   const actorLabel = `${actor.name} (${ROLE_LABELS[actor.role]})`;
   const done = progress === "done";
