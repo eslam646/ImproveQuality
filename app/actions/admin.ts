@@ -404,3 +404,16 @@ export async function togglePublicLinkAction(key: PublicLinkKey, enabled: boolea
   revalidatePath("/update-form");
   return { ok: true };
 }
+
+// ====== تشغيل طابور البريد يدوياً + تشخيص فوري (يظهر أعلى سجل البريد) ======
+export async function processQueueNowAction() {
+  await requireStaff(["admin"]);
+  const { processAll } = await import("@/lib/worker");
+  try {
+    const report = await processAll();
+    revalidatePath("/emails");
+    return { ok: true, ...report };
+  } catch (e) {
+    return { ok: false, error: String(e).slice(0, 300) };
+  }
+}

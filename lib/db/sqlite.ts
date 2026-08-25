@@ -706,6 +706,10 @@ export function createSqliteRepo(): Repo {
         .all(nowIso(), limit) as Record<string, unknown>[];
       return rows.map(mapJob);
     },
+    async jobsRecent(limit) {
+      const rows = db.prepare("SELECT * FROM jobs ORDER BY created_at DESC LIMIT ?").all(limit) as Record<string, unknown>[];
+      return rows.map(mapJob);
+    },
     async jobClaim(id) {
       const r = db.prepare("UPDATE jobs SET status='processing' WHERE id=? AND status='queued'").run(id);
       return r.changes > 0;

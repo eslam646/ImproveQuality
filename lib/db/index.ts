@@ -110,6 +110,7 @@ export interface Repo {
     idempotency_key: string; type: Job["type"]; payload: Record<string, unknown>; delaySeconds?: number;
   }): Promise<"created" | "dup">;
   jobsDue(limit: number): Promise<Job[]>;
+  jobsRecent(limit: number): Promise<Job[]>;
   jobClaim(id: string): Promise<boolean>;
   jobDone(id: string): Promise<void>;
   jobFail(id: string, err: string, retryAtIso: string | null): Promise<void>;

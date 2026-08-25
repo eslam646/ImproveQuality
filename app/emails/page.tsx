@@ -1,6 +1,7 @@
 import { requirePerm, requireStaff } from "@/lib/auth";
 import { getRepo } from "@/lib/db";
 import { Badge, Card, EmptyState } from "@/components/ui";
+import { QueueStatus } from "@/components/queue-status";
 import { ResendButton } from "@/components/resend-button";
 import { ForwardEmailButton } from "@/components/forward-email-button";
 import { fmtDate } from "@/lib/util";
@@ -25,9 +26,14 @@ export default async function EmailsPage({
   const sp = await searchParams;
   const page = Math.max(1, parseInt(sp.page ?? "1", 10) || 1);
   const repo = await getRepo();
-  const [{ rows, total }, staffRows] = await Promise.all([repo.emailLogList(page, 20), repo.staffList(true)]);
+  const [{ rows, total }, staffRows, recentJobs] = await Promise.all([
+    repo.emailLogList(page, 20), repo.staffList(true), repo.jobsRecent(100),
+  ]);
   const staff = staffRows.map((s) => ({ id: s.id, name: s.name, email: s.email, roleLabel: ROLE_LABELS[s.role] }));
   const pages = Math.max(1, Math.ceil(total / 20));
+  const queuedJobs = recentJobs.filter((j) => j.status === "queued" || j.status === "processing");
+  const deadJobs = recentJobs.filter((j) => j.status === "dead");
+  const lastError = [...deadJobs, ...queuedJobs].find((j) => j.last_error)?.last_error ?? null;
 
   return (
     <div className="space-y-5">
@@ -37,6 +43,7 @@ export default async function EmailsPage({
           كل رسالة أرسلها النظام مسجلة هنا بالكامل — بدون مفاتيح API تعمل في «وضع التسجيل» (المعاينة الكاملة دون إرسال فعلي)
         </p>
       </div>
+      <QueueStatus queued={queuedJobs.length} dead={deadJobs.length} lastError={lastError} />
       {rows.length === 0 ? (
         <EmptyState>لا يوجد بريد بعد — جرّب إنشاء طلب أو تغيير حالة لمشاهدة الأتمتة تعمل.</EmptyState>
       ) : (
