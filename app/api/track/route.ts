@@ -38,7 +38,12 @@ export async function GET(req: Request) {
   if (cfg.show_priority) body.priority_label = ({ low: "منخفضة", normal: "عادية", high: "مرتفعة", critical: "حرجة" } as const)[t.priority ?? "normal"];
   if (cfg.show_creator) body.creator_name = t.created_by_name;
   if (cfg.show_tester) body.tester_name = t.tester_name;
-  if (cfg.show_developer) body.developer_name = t.developer_name;
+  if (cfg.show_developer) {
+    const specNames = !t.is_urgent
+      ? (await repo.specialistList(t.id)).filter((x) => x.status !== "declined").map((x) => `${x.staff_name} (${x.spec_label})`)
+      : [];
+    body.developer_name = specNames.length ? specNames.join("، ") : t.developer_name;
+  }
   if (cfg.show_assignment_status) {
     body.tester_assignment_status_label = ASSIGNMENT_STATUS_LABELS[t.tester_assignment_status ?? "unassigned"];
     body.developer_assignment_status_label = ASSIGNMENT_STATUS_LABELS[t.developer_assignment_status ?? "unassigned"];

@@ -88,6 +88,17 @@ async function executeJob(job: Job, settings: Settings): Promise<void> {
     const tmpl = await repo.templateGet(action.template_id);
     if (!tmpl) throw new Error(`القالب غير موجود: ${action.template_id}`);
     const vars = { ...templateVars(ticket, settings, extra), ...(extra.custom ?? {}) };
+    // {{developer_name}} يعرض فريق التطوير الكامل (المتخصصين) إن وُجد
+    if (!ticket.is_urgent) {
+      try {
+        const specs = (await repo.specialistList(ticket.id)).filter((x) => x.status !== "declined");
+        if (specs.length) {
+          const team = specs.map((x) => `${x.staff_name} (${x.spec_label})`).join("، ");
+          vars.developer_name = team;
+          vars["ticket.developer_name"] = team;
+        }
+      } catch { /* جدول غير موجود بعد */ }
+    }
     const subject = renderTemplate(tmpl.subject, vars, { htmlEscape: false });
     const intro = renderTemplate(tmpl.body_html, vars);
     // القالب له أقسام مرئية يتحكم بها الأدمن — الافتراضي عند عدم التخصيص

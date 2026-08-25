@@ -55,8 +55,19 @@ export async function resolveRecipients(
     const creator = ticket.created_by ? await getStaff(ticket.created_by) : null;
     const tester = ticket.tester_id ? await getStaff(ticket.tester_id) : null;
     const developer = ticket.developer_id ? await getStaff(ticket.developer_id) : null;
+    // المتخصصون الحاليون (باك/فرونت/UX) جزء من فريق التطوير في كل المراسلات
+    const specialistStaff: Staff[] = [];
+    if (!ticket.is_urgent) {
+      try {
+        const specs = await repo.specialistList(ticket.id);
+        for (const sp of specs.filter((x) => x.status !== "declined")) {
+          const st = await getStaff(sp.staff_id);
+          if (st?.active) specialistStaff.push(st);
+        }
+      } catch { /* جدول غير موجود بعد */ }
+    }
     if (r.ref === "ticket_parties") {
-      [creator, tester, developer].forEach((s) => { if (s?.active) staffOut.push(s); });
+      [creator, tester, developer, ...specialistStaff].forEach((s) => { if (s?.active) staffOut.push(s); });
       continue;
     }
     if (r.ref === "event_target") {
@@ -78,9 +89,14 @@ export async function resolveRecipients(
       }
       continue;
     }
+    if (r.ref === "developer") {
+      // «المطور المعيّن» = الديف المباشر (قديم/دعم فوري) + كل المتخصصين الحاليين
+      if (developer?.active) staffOut.push(developer);
+      specialistStaff.forEach((s) => staffOut.push(s));
+      continue;
+    }
     let target: Staff | null = null;
     switch (r.ref) {
-      case "developer": target = developer; break;
       case "tester": target = tester; break;
       case "creator": target = creator; break;
       case "developer_manager": target = await managerOf(developer); break;

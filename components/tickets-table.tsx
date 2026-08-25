@@ -14,7 +14,7 @@ const COLUMN_LABELS = {
 type ColumnKey = keyof typeof COLUMN_LABELS;
 const ALL_COLUMNS = Object.keys(COLUMN_LABELS) as ColumnKey[];
 
-export function TicketsTable({ rows, readOnlyNote, storageKey = "support-hub-ticket-columns" }: { rows: Ticket[]; readOnlyNote?: string; storageKey?: string }) {
+export function TicketsTable({ rows, readOnlyNote, storageKey = "support-hub-ticket-columns", specialistsByTicket = {} }: { rows: Ticket[]; readOnlyNote?: string; storageKey?: string; specialistsByTicket?: Record<string, string> }) {
   const [visible, setVisible] = useState<ColumnKey[]>(ALL_COLUMNS);
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   useEffect(() => {
@@ -40,7 +40,7 @@ export function TicketsTable({ rows, readOnlyNote, storageKey = "support-hub-tic
     if (k === "title") return <td className="max-w-72 px-4 py-2.5"><div className="font-bold text-slate-800">{t.title || "بدون عنوان"}</div><span className="line-clamp-2 text-xs text-slate-500">{t.details}</span></td>;
     if (k === "creator") return <td className="px-4 py-2.5 text-slate-600">{t.created_by_name}</td>;
     if (k === "tester") return <td className="px-4 py-2.5 text-slate-600"><div>{t.tester_name ?? <span className="text-slate-400">—</span>}</div><div className="text-[11px] text-slate-400">{ASSIGNMENT_STATUS_LABELS[t.tester_assignment_status ?? "unassigned"]}</div></td>;
-    if (k === "developer") return <td className="px-4 py-2.5 text-slate-600"><div>{t.developer_name ?? <span className="text-slate-400">—</span>}</div><div className="text-[11px] text-slate-400">{ASSIGNMENT_STATUS_LABELS[t.developer_assignment_status ?? "unassigned"]}</div></td>;
+    if (k === "developer") { const team = specialistsByTicket[t.id]; return <td className="px-4 py-2.5 text-slate-600">{team ? <div className="text-xs leading-relaxed">{team}</div> : <><div>{t.developer_name ?? <span className="text-slate-400">—</span>}</div><div className="text-[11px] text-slate-400">{ASSIGNMENT_STATUS_LABELS[t.developer_assignment_status ?? "unassigned"]}</div></>}</td>; }
     if (k === "status") { if (t.is_urgent) { const u = urgentStatusInfo(t); return <td className="px-4 py-2.5"><Badge color={u.color}>{u.label}</Badge></td>; } return <td className="px-4 py-2.5"><Badge color={STATUS_COLORS[t.dev_status]}>{STATUS_LABELS[t.dev_status]}</Badge></td>; }
     return <td className="px-4 py-2.5 text-xs text-slate-500">{fmtDate(t.last_status_change)}</td>;
   };

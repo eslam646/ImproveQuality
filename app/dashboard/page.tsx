@@ -49,6 +49,13 @@ export default async function DashboardPage({
     repo.ticketCounts(),
   ]);
 
+  // فريق التطوير (المتخصصون) لكل تذكرة في الصفحة الحالية — للعرض في عمود «المطور»
+  const specialistsByTicket: Record<string, string> = {};
+  await Promise.all(rows.filter((t) => !t.is_urgent).map(async (t) => {
+    const specs = (await repo.specialistList(t.id)).filter((x) => x.status !== "declined");
+    if (specs.length) specialistsByTicket[t.id] = specs.map((x) => `${x.staff_name} (${x.spec_label})`).join("، ");
+  }));
+
   const openCount = Object.entries(counts.byStatus)
     .filter(([s]) => !FINAL_STATUSES.includes(s as DevStatus))
     .reduce((a, [, c]) => a + c, 0);
@@ -161,6 +168,7 @@ export default async function DashboardPage({
 
       <TicketsTable
         rows={rows}
+        specialistsByTicket={specialistsByTicket}
         storageKey={`support-hub-columns-${actor.id}`}
         readOnlyNote={manage ? undefined : actor.role === "support"
           ? "🔒 مدخل البيانات: تذاكرك فقط — قراءة وإضافة ملاحظات، بدون تعديل البيانات أو الحالة أو المرفقات."
