@@ -337,7 +337,7 @@ export function createSqliteRepo(): Repo {
       if (!cur) return;
       const m = { ...cur, ...patch };
       db.prepare("UPDATE staff SET name=?,email=?,role=?,manager_id=?,active=?,specializations=?,created_at=? WHERE id=?")
-        .run(m.name, m.email, m.role, m.manager_id, m.active, m.specializations?.length ? JSON.stringify(m.specializations) : null, m.created_at, id);
+        .run(m.name, m.email, m.role, m.manager_id, m.active ? 1 : 0, m.specializations?.length ? JSON.stringify(m.specializations) : null, m.created_at, id);
     },
 
     async privateLinkCreate(input) {
@@ -503,7 +503,9 @@ export function createSqliteRepo(): Repo {
       const w = where.length ? `WHERE ${where.join(" AND ")}` : "";
       const total = (db.prepare(`SELECT COUNT(*) c FROM tickets ${w}`).get(...args) as { c: number }).c;
       const page = f.page ?? 1, size = f.pageSize ?? 15;
-      const rows = (db.prepare(`SELECT * FROM tickets ${w} ORDER BY created_at DESC LIMIT ? OFFSET ?`)
+      // الترتيب: الأحدث إنشاءً (الافتراضي) أو الأحدث تعديلاً (آخر تحديث على التذكرة)
+      const orderBy = f.sort === "updated" ? "COALESCE(updated_at, created_at) DESC" : "created_at DESC";
+      const rows = (db.prepare(`SELECT * FROM tickets ${w} ORDER BY ${orderBy} LIMIT ? OFFSET ?`)
         .all(...args, size, (page - 1) * size) as TicketRow[]).map(mapTicket);
       return { rows, total };
     },

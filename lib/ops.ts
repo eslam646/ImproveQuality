@@ -704,7 +704,8 @@ export async function addNoteOp(
     actor_staff_id: actorStaffId ?? null, actor_label: actorLabel,
     old_values: null, new_values: { note },
   });
-  const t = await repo.ticketById(ticketId);
+  // الملاحظة تعديل فعلي على التذكرة — ترفعها لأعلى ترتيب «الأحدث تعديلاً»
+  const t = await repo.ticketUpdate(ticketId, { updated_at: nowIso() });
   if (!t) return;
 
   const isStatus = actorRole === "developer" ? "ملاحظات الديف" : actorRole === "tester" ? "ملاحظات التيست" : "ملاحظة";

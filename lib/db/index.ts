@@ -17,6 +17,7 @@ export interface TicketFilter {
   source?: string;
   page?: number;
   pageSize?: number;
+  sort?: "created" | "updated"; // created = الأحدث إنشاءً (الافتراضي) | updated = الأحدث تعديلاً
   staleOlderThanHours?: number; // للتذكيرات
 }
 

@@ -297,7 +297,9 @@ export async function createSupabaseRepo(): Promise<Repo> {
         q = q.lt("last_status_change", cutoff);
       }
       const page = f.page ?? 1, size = f.pageSize ?? 15;
-      q = q.order("created_at", { ascending: false }).range((page - 1) * size, page * size - 1);
+      // الترتيب: الأحدث إنشاءً (الافتراضي) أو الأحدث تعديلاً
+      q = (f.sort === "updated" ? q.order("updated_at", { ascending: false, nullsFirst: false }) : q.order("created_at", { ascending: false }))
+        .range((page - 1) * size, page * size - 1);
       const res = await q;
       return { rows: (must(res) as Ticket[]) ?? [], total: res.count ?? 0 };
     },

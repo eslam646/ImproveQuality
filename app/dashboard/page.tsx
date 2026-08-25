@@ -29,6 +29,7 @@ export default async function DashboardPage({
   const tester_id = sp.tester_id ?? "";
   const request_type = (sp.request_type ?? "") as RequestType | "";
   const ticket_kind = (sp.ticket_kind ?? "") as TicketKind | "";
+  const sort = sp.sort === "updated" ? "updated" as const : "created" as const;
   const canViewAll = perms.view_all_tickets ?? false;
   const mine = actor.role === "developer" && !canViewAll;
 
@@ -44,7 +45,7 @@ export default async function DashboardPage({
       request_type: request_type || undefined,
       ticket_kind: ticket_kind || undefined,
       created_by: actor.role === "support" && !canViewAll ? actor.id : undefined,
-      page, pageSize: 15,
+      page, pageSize: 15, sort,
     }),
     repo.ticketCounts(),
   ]);
@@ -71,6 +72,7 @@ export default async function DashboardPage({
     if (tester_id) u.set("tester_id", tester_id);
     if (request_type) u.set("request_type", request_type);
     if (ticket_kind) u.set("ticket_kind", ticket_kind);
+    if (sort === "updated") u.set("sort", sort);
     if (sp.mine) u.set("mine", sp.mine);
     u.set("page", String(p));
     return `/dashboard?${u.toString()}`;
@@ -144,6 +146,10 @@ export default async function DashboardPage({
         <select name="ticket_kind" defaultValue={ticket_kind} className={`${selectCls} max-w-44`}>
           <option value="">عادي + دعم فوري</option>
           {Object.entries(TICKET_KIND_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+        </select>
+        <select name="sort" defaultValue={sort} className={`${selectCls} max-w-44`}>
+          <option value="created">🕐 الأحدث إنشاءً</option>
+          <option value="updated">✏️ الأحدث تعديلاً</option>
         </select>
         {canViewAll && (
           <>
