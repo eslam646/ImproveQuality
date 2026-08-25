@@ -62,12 +62,19 @@ export function QueueStatus({ queued, dead, lastError }: { queued: number; dead:
             disabled={busy}
             className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-bold text-white hover:bg-blue-700 disabled:opacity-50"
             onClick={async () => {
+              // دفعات صغيرة متتالية تلقائياً (كل نداء طلب مستقل → لا يتخطى حدود Cloudflare أبداً)
               setBusy(true); setMsg(null);
-              const r = await processQueueNowAction() as { ok: boolean; sent?: number; recovered?: number; forced?: number; dead?: number; remaining?: boolean; error?: string };
+              let sent = 0, recovered = 0, forced = 0, deadCount = 0;
+              let lastErr: string | null = null;
+              for (let round = 0; round < 30; round++) {
+                const r = await processQueueNowAction() as { ok: boolean; sent?: number; recovered?: number; forced?: number; dead?: number; remaining?: boolean; error?: string };
+                if (!r.ok) { lastErr = r.error ?? "فشل"; break; }
+                sent += r.sent ?? 0; recovered += r.recovered ?? 0; forced += r.forced ?? 0; deadCount += r.dead ?? 0;
+                setMsg(`⏳ جارٍ الإرسال… ${sent} حتى الآن`);
+                if (!r.remaining) break;
+              }
               setBusy(false);
-              setMsg(r.ok
-                ? `تمت ✓ أُرسل ${r.sent ?? 0}${r.recovered ? ` — استُعيد ${r.recovered} عالقة` : ""}${r.forced ? ` — عُجّل ${r.forced} مؤجلة` : ""}${r.dead ? ` — ${r.dead} فشلت نهائياً` : ""}${r.remaining ? " — ⚠️ تبقّى المزيد: اضغط مرة أخرى" : ""}`
-                : r.error ?? "فشل");
+              setMsg(lastErr ?? `تمت ✓ أُرسل ${sent}${recovered ? ` — استُعيد ${recovered} عالقة` : ""}${deadCount ? ` — ${deadCount} فشلت نهائياً (انظر الأسباب بالقائمة)` : ""}`);
               setDetails(null);
               router.refresh();
             }}

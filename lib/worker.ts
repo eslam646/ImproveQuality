@@ -5,7 +5,8 @@ import { processEstimationReminders } from "./estimation-reminders";
 import { sendMail } from "./email";
 import { renderBlocks, renderTemplate, templateVars, wrapEmail } from "./templates";
 import { DEFAULT_TEMPLATE_BLOCKS } from "./types";
-import type { Action, DevStatus, Job, Settings, Ticket } from "./types";
+import type { Action, DevStatus, Job, Settings, Staff, Ticket, TicketSpecialist } from "./types";
+import type { Repo } from "./db";
 import { nowIso } from "./util";
 
 export interface ProcessReport {
@@ -19,7 +20,7 @@ export interface ProcessReport {
 
 // معالجة المهام المستحقة فقط (إيميلات/إشعارات) — تُستدعى فور كل حدث وأيضاً من الدورة المجدولة
 export async function processDueJobs(limit = 25): Promise<Omit<ProcessReport, "remindersEnqueued">> {
-  const repo = await getRepo();
+  const repo = memoizedRepo(await getRepo());
   const settings = await repo.settingsGet();
   const jobs = await repo.jobsDue(limit);
   const report = { processed: 0, sent: 0, retried: 0, dead: 0, skipped: 0 };
@@ -27,7 +28,7 @@ export async function processDueJobs(limit = 25): Promise<Omit<ProcessReport, "r
   for (const job of jobs) {
     if (!(await repo.jobClaim(job.id))) { report.skipped++; continue; }
     try {
-      await executeJob(job, settings);
+      await executeJob(job, settings, repo);
       await repo.jobDone(job.id);
       report.processed++;
       if (job.type === "send_email") report.sent++;
@@ -48,6 +49,30 @@ export async function processDueJobs(limit = 25): Promise<Omit<ProcessReport, "r
 }
 
 // معالجة مهمة واحدة بعينها (زر «إرسال هذه الرسالة» في لوحة الطابور) — يستعيدها أولاً لو كانت عالقة/مؤجلة
+// نسخة Repo بذاكرة مؤقتة للقراءات المتكررة (staff/specialists) — تخفض الاستعلامات الفرعية
+// بشدة حتى لا نتخطى حد Cloudflare (~50 استعلاماً لكل طلب) عند معالجة/معاينة قوائم طويلة
+export function memoizedRepo(repo: Repo): Repo {
+  const staffListCache = new Map<string, Promise<Staff[]>>();
+  const staffCache = new Map<string, Promise<Staff | null>>();
+  const specCache = new Map<string, Promise<TicketSpecialist[]>>();
+  return {
+    ...repo,
+    staffList: (activeOnly?: boolean) => {
+      const k = String(!!activeOnly);
+      if (!staffListCache.has(k)) staffListCache.set(k, repo.staffList(activeOnly));
+      return staffListCache.get(k)!;
+    },
+    staffGet: (id: string) => {
+      if (!staffCache.has(id)) staffCache.set(id, repo.staffGet(id));
+      return staffCache.get(id)!;
+    },
+    specialistList: (ticketId: string) => {
+      if (!specCache.has(ticketId)) specCache.set(ticketId, repo.specialistList(ticketId));
+      return specCache.get(ticketId)!;
+    },
+  };
+}
+
 export async function processOneJob(jobId: string): Promise<{ ok: boolean; error?: string }> {
   const repo = await getRepo();
   const settings = await repo.settingsGet();
@@ -73,8 +98,9 @@ export async function processOneJob(jobId: string): Promise<{ ok: boolean; error
 export async function previewJobRecipients(
   jobOrId: Job | string,
   ticketCache?: Map<string, Ticket | null>,
+  repoIn?: Repo, // مرر memoizedRepo مشتركاً عند المعاينة في حلقة — يمنع تجاوز حد استعلامات Cloudflare
 ): Promise<{ to: string[]; cc: string[]; excluded: string | null }> {
-  const repo = await getRepo();
+  const repo = repoIn ?? memoizedRepo(await getRepo());
   const job = typeof jobOrId === "string" ? await repo.jobGet(jobOrId) : jobOrId;
   if (!job) return { to: [], cc: [], excluded: null };
   const action = (job.payload as { action: Action }).action;
@@ -117,8 +143,8 @@ export async function processAll(): Promise<ProcessReport> {
   return { remindersEnqueued, ...jobReport };
 }
 
-async function executeJob(job: Job, settings: Settings): Promise<void> {
-  const repo = await getRepo();
+async function executeJob(job: Job, settings: Settings, repoIn?: Repo): Promise<void> {
+  const repo = repoIn ?? memoizedRepo(await getRepo());
   const action = (job.payload as { action: Action }).action;
   const ticketId = (job.payload as { ticket_id: string }).ticket_id;
   const extra = ((job.payload as { extra_vars?: { old_status: string | null; note: string | null; custom?: Record<string, string> | null; exclude_staff_id?: string | null } }).extra_vars)

@@ -415,16 +415,13 @@ export async function processQueueNowAction() {
     const recovered = await repo.jobsRecoverStuck(2);
     // 2) المؤجل بسبب إعادة المحاولة يصبح مستحقاً الآن — الزر اليدوي معناه «ابعت كل حاجة دلوقتي»
     const forced = await repo.jobsForceDue();
-    // 3) معالجة دفعات حتى يفرغ الطابور — بميزانية وقت 20 ثانية حتى لا يعلّق الطلب على Cloudflare
-    //    (الباقي يُرسل بضغطة تالية أو بالدورة التلقائية)
+    // 3) دفعة واحدة محسوبة (10 رسائل): كل إيميل يستهلك استعلامات فرعية عديدة + نداء Brevo،
+    //    وحد Cloudflare ~50 استعلاماً فرعياً للطلب الواحد — الدفعات الكبيرة كانت تُقتل في المنتصف
+    //    (رسائل «pending» المعلقة في السجل). الباقي يُرسل بضغطة تالية — الزر يخبرك بالمتبقي.
     const totals = { processed: 0, sent: 0, retried: 0, dead: 0, skipped: 0 };
-    const deadline = Date.now() + 20_000;
-    for (let i = 0; i < 8 && Date.now() < deadline; i++) {
-      const r = await processDueJobs(25);
-      totals.processed += r.processed; totals.sent += r.sent;
-      totals.retried += r.retried; totals.dead += r.dead; totals.skipped += r.skipped;
-      if (r.processed + r.skipped === 0) break;
-    }
+    const r = await processDueJobs(10);
+    totals.processed += r.processed; totals.sent += r.sent;
+    totals.retried += r.retried; totals.dead += r.dead; totals.skipped += r.skipped;
     const remaining = (await repo.jobsDue(1)).length > 0;
     revalidatePath("/emails");
     return { ok: true, recovered, forced, remaining, ...totals };
@@ -437,10 +434,11 @@ export async function processQueueNowAction() {
 // محسّنة للسرعة: أول 40 مهمة فقط، مع كاش مشترك للتذاكر والقوالب (لا استعلام مكرر)
 export async function listPendingEmailJobsAction() {
   await requireStaff(["admin"]);
-  const repo = await getRepo();
-  const { previewJobRecipients } = await import("@/lib/worker");
+  const { previewJobRecipients, memoizedRepo } = await import("@/lib/worker");
+  // Repo بذاكرة مشتركة: staff/specialists تُقرأ مرة واحدة للقائمة كلها — يمنع تجاوز حد استعلامات Cloudflare
+  const repo = memoizedRepo(await getRepo());
   const all = (await repo.jobsRecent(200)).filter((j) => j.type === "send_email" && ["queued", "processing", "dead", "failed"].includes(j.status));
-  const jobs = all.slice(0, 40); // الأحدث أولاً — الباقي يظهر بعد معالجة الدفعة الأولى
+  const jobs = all.slice(0, 25); // دفعة محسوبة — الباقي يظهر بعد معالجة الدفعة الأولى
   const ticketCache = new Map<string, Awaited<ReturnType<typeof repo.ticketById>>>();
   const tmplCache = new Map<string, string>();
   const out: { id: string; ticket: string; template: string; status: string; attempts: number; runAfter: string; reason: string; to: string[]; cc: string[]; excluded: string | null }[] = [];
@@ -469,7 +467,7 @@ export async function listPendingEmailJobsAction() {
           : overdue
             ? "مستحقة الآن ولم يلتقطها المعالج بعد — اضغط «معالجة الآن»"
             : "مجدولة لاحقاً (تذكير/تأجيل مقصود)";
-    const rec = await previewJobRecipients(j, ticketCache as never).catch(() => ({ to: [], cc: [], excluded: null }));
+    const rec = await previewJobRecipients(j, ticketCache as never, repo).catch(() => ({ to: [], cc: [], excluded: null }));
     out.push({
       id: j.id,
       ticket: ticketCode,
