@@ -228,6 +228,9 @@ export async function assignTesterAction(formData: FormData) {
   const testerId = String(formData.get("tester_id") ?? "");
   const repo = await getRepo();
   const t = await repo.ticketByCode(code);
+  if (t?.dev_status === "rejected") {
+    redirect(`/tickets/${code}?err=${enc("الطلب مرفوض نهائياً — لا إسناد عليه. مدخل البيانات يعدّل بياناته ويعيد إرساله لتبدأ الدورة من جديد")}`);
+  }
   // الدعم الفوري: إعادة الإسناد فقط عندما تكون الخانة شاغرة (اعتذار/رفض) — لا تبديل أثناء العمل أو بعد الإقفال
   if (t?.is_urgent) {
     if (t.urgent_ended_at) redirect(`/tickets/${code}?err=${enc("الدعم الفوري أُقفل — لا إسناد بعد الإقفال")}`);
@@ -492,4 +495,20 @@ export async function removeSpecialistAction(formData: FormData) {
   const r = await removeSpecialistOp(specialistId, labelOf(actor), actor.id);
   revalidatePath(`/tickets/${code}`);
   redirect(`/tickets/${code}?${r.ok ? `ok=${enc("أُزيل المتخصص وأُبلغ بالإيميل ✓")}` : `err=${enc(r.error ?? "تعذر الإزالة")}`}`);
+}
+
+// ═══ إعادة إرسال طلب مرفوض — صاحب الطلب يعدّل ويعيد والدورة تبدأ من جديد ═══
+export async function resubmitTicketAction(formData: FormData) {
+  const actor = await requireStaff();
+  const code = String(formData.get("code") ?? "");
+  const title = String(formData.get("title") ?? "").trim();
+  const details = String(formData.get("details") ?? "").trim();
+  const repo = await getRepo();
+  const t = await repo.ticketByCode(code);
+  if (!t) redirect("/dashboard");
+  const { resubmitTicketOp } = await import("@/lib/ops");
+  const r = await resubmitTicketOp(t.id, { staff_id: actor.id, name: actor.name, role: actor.role }, { title, details });
+  revalidatePath(`/tickets/${code}`);
+  revalidatePath("/dashboard");
+  redirect(`/tickets/${code}?${r.ok ? `ok=${enc("أُعيد إرسال الطلب بعد التعديل ✓ — الدورة بدأت من جديد وأُبلغ التيستر")}` : `err=${enc(r.error ?? "تعذر إعادة الإرسال")}`}`);
 }

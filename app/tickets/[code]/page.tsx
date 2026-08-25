@@ -5,7 +5,7 @@ import { requireStaff, permissionsForStaff } from "@/lib/auth";
 import {
   addNoteAction, assignDeveloperAction, assignTesterAction,
   assignSpecialistAction, declineAssignmentAction, removeSpecialistAction, respondSpecialistAction,
-  respondToAssignmentAction, setEstimationAction, specialistReadyAction,
+  respondToAssignmentAction, resubmitTicketAction, setEstimationAction, specialistReadyAction,
 } from "@/app/actions/tickets";
 import { Badge, Button, Card, Field, Msg, selectCls, inputCls } from "@/components/ui";
 import { allowedTransitions, ALL_STATUSES, ASSIGNMENT_STATUS_LABELS, REQUEST_TYPE_LABELS, ROLE_LABELS, STATUS_COLORS, STATUS_LABELS, urgentStatusInfo } from "@/lib/labels";
@@ -355,6 +355,25 @@ export default async function TicketDetailsPage({
                   <Button type="submit">🧩 إسناد التخصص</Button>
                 </form>
               )}
+            </Card>
+          )}
+
+          {/* طلب مرفوض: صاحبه يعدّل ويعيد الإرسال — الدورة تبدأ من جديد */}
+          {ticket.dev_status === "rejected" && !ticket.is_urgent && (ticket.created_by === actor.id || actor.role === "admin") && (
+            <Card title="🔄 الطلب مرفوض — عدّل بياناته وأعد إرساله">
+              <form action={resubmitTicketAction} className="space-y-3">
+                <input type="hidden" name="code" value={ticket.code} />
+                <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">
+                  عالج سبب الرفض المذكور في سجل الأحداث ثم أعد الإرسال — الدورة تبدأ من جديد (مراجعة التيستر ثم التطوير).
+                </div>
+                <Field label="عنوان الطلب (معدّل)">
+                  <input name="title" required minLength={3} maxLength={180} defaultValue={ticket.title ?? ""} className={inputCls} />
+                </Field>
+                <Field label="التفاصيل (عالج فيها سبب الرفض)">
+                  <textarea name="details" required minLength={10} rows={8} defaultValue={ticket.details} className={inputCls} />
+                </Field>
+                <Button type="submit">🔄 إعادة الإرسال — تبدأ الدورة من جديد</Button>
+              </form>
             </Card>
           )}
 

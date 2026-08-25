@@ -185,6 +185,7 @@ export type TriggerType =
   | "urgent.withdrawal"      // اعتذار عن الدعم الفوري بعد القبول
   | "urgent.progress"        // موقف الدعم الفوري: مازلت أعمل / انتهيت
   | "ticket.rejected"        // رفض الطلب نهائياً (بسبب)
+  | "ticket.resubmitted"     // مدخل البيانات عدّل الطلب المرفوض وأعاد إرساله
   | "test.failed"            // فشل الاختبار (بسبب)
   | "ticket.delivered"       // تم الإصلاح أو التسليم والإغلاق
   | "note.added"             // ملاحظة / رد جديد

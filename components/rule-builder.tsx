@@ -158,6 +158,7 @@ export function RuleBuilder({ initial, templates, staff }: {
             { v: "urgent.withdrawal", l: "🙅 عند الاعتذار عن الدعم الفوري بعد القبول" },
             { v: "urgent.progress", l: "🚨 عند تحديث موقف الدعم الفوري (مازلت أعمل / انتهيت)" },
             { v: "ticket.rejected", l: "❌ عند رفض الطلب نهائياً (بسبب)" },
+            { v: "ticket.resubmitted", l: "🔄 عند إعادة إرسال طلب مرفوض بعد التعديل" },
             { v: "test.failed", l: "🧪 عند فشل الاختبار (يعود للمطور بالسبب)" },
             { v: "ticket.delivered", l: "📦 عند الإصلاح أو التسليم والإغلاق" },
             { v: "note.added", l: "💬 عند إضافة ملاحظة / رد جديد" },

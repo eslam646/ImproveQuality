@@ -205,6 +205,13 @@ export const SEED_TEMPLATES: EmailTemplate[] = [
     created_at: nowIso(), updated_at: nowIso(),
   },
   {
+    id: "tmpl-resubmitted", name: "إعادة إرسال طلب مرفوض",
+    subject: "🔄 أُعيد إرسال الطلب {{code}} بعد التعديل (نسخة {{version}})",
+    body_html: `عدّل <b>{{actor_name}}</b> بيانات الطلب المرفوض وأعاد إرساله — الدورة بدأت من جديد وسيراجعه التيستر.`,
+    blocks: { ...DEFAULT_TEMPLATE_BLOCKS, note: false, update_button: false },
+    created_at: nowIso(), updated_at: nowIso(),
+  },
+  {
     id: "tmpl-note-added", name: "ملاحظة / رد جديد على الطلب",
     subject: "💬 ملاحظة جديدة على {{code}} — {{actor_name}}",
     body_html: `أضاف <b>{{actor_name}}</b> ملاحظة على الطلب:<br><div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:12px;margin-top:8px">{{note}}</div>`,
@@ -337,6 +344,15 @@ export const SEED_RULES: AutomationRule[] = [
     actions: [
       { type: "send_email", to: [{ kind: "ref", ref: "client" }, { kind: "ref", ref: "creator" }], cc: [{ kind: "ref", ref: "tester" }, { kind: "ref", ref: "developer" }], template_id: "tmpl-delivered" },
       { type: "notify", to: [{ kind: "ref", ref: "creator" }], message: "{{status_label}} — {{code}}" },
+    ],
+    enabled: 1, run_count: 0, created_at: nowIso(),
+  },
+  {
+    id: "rule-resubmitted", name: "إعادة إرسال بعد الرفض → إبلاغ الإدارة والتيستر", trigger_type: "ticket.resubmitted", trigger_field: null,
+    conditions: [],
+    actions: [
+      { type: "send_email", to: [{ kind: "role", role: "admin" }], cc: [{ kind: "ref", ref: "tester" }], template_id: "tmpl-resubmitted" },
+      { type: "notify", to: [{ kind: "role", role: "admin" }], message: "🔄 {{code}} أُعيد إرساله بعد الرفض (نسخة {{version}})" },
     ],
     enabled: 1, run_count: 0, created_at: nowIso(),
   },

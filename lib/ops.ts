@@ -324,6 +324,7 @@ export async function assignDeveloperOp(
   const repo = await getRepo();
   const old = await repo.ticketById(ticketId);
   if (!old) return null;
+  if (old.dev_status === "rejected") return old; // مرفوض نهائياً — لا إسناد
   const dev = await repo.staffGet(developerId);
   const patch: Partial<Ticket> = {
     developer_id: developerId,
@@ -741,6 +742,7 @@ export async function assignSpecialistOp(
   const t = await repo.ticketById(ticketId);
   if (!t) return { ok: false, error: "الطلب غير موجود" };
   if (t.is_urgent) return { ok: false, error: "الدعم الفوري لا يستخدم التخصصات — تيست وديف مباشرة" };
+  if (t.dev_status === "rejected") return { ok: false, error: "الطلب مرفوض نهائياً — لا إسناد عليه حتى يعيد مدخل البيانات إرساله" };
   const settings = await repo.settingsGet();
   const spec = settings.dev_specializations.find((x) => x.key === specKey && x.active);
   if (!spec) return { ok: false, error: "التخصص غير موجود أو موقوف" };
@@ -927,4 +929,68 @@ export async function specialistReadyOp(
     await changeStatusOp(sp.ticket_id, "ready_for_test", "النظام — اكتملت جاهزية كل التخصصات");
   }
   return { ok: true, allReady };
+}
+
+// ═══ إعادة إرسال طلب مرفوض — مدخل البيانات يعدّل بياناته وتبدأ الدورة من جديد ═══
+export async function resubmitTicketOp(
+  ticketId: string,
+  actor: { staff_id: string; name: string; role: Role },
+  changes: { title: string; details: string },
+): Promise<{ ok: boolean; error?: string }> {
+  const repo = await getRepo();
+  const t = await repo.ticketById(ticketId);
+  if (!t) return { ok: false, error: "الطلب غير موجود" };
+  if (t.dev_status !== "rejected") return { ok: false, error: "إعادة الإرسال متاحة للطلبات المرفوضة نهائياً فقط" };
+  if (t.is_urgent) return { ok: false, error: "الدعم الفوري المرفوض يُسجل من جديد — لا يُعاد إرساله" };
+  // صاحب الطلب أو الأدمن فقط
+  if (actor.role !== "admin" && t.created_by !== actor.staff_id) {
+    return { ok: false, error: "إعادة الإرسال حق مدخل البيانات صاحب الطلب (أو الأدمن)" };
+  }
+  const title = changes.title.trim();
+  const details = changes.details.trim();
+  if (title.length < 3) return { ok: false, error: "عنوان الطلب إجباري (3 أحرف فأكثر)" };
+  if (details.length < 10) return { ok: false, error: "التفاصيل إجبارية (10 أحرف فأكثر) — عالج سبب الرفض فيها" };
+
+  const now = nowIso();
+  // الدورة تبدأ من جديد: جديد + تصفير التكليفات والعدّادات (يبقى التيستر السابق مسنداً بانتظار رد جديد إن وجد)
+  const updated = await repo.ticketUpdate(ticketId, {
+    title, details,
+    dev_status: "new",
+    overall_status: "new",
+    tester_assignment_status: t.tester_id ? "pending" : "unassigned",
+    developer_assignment_status: "unassigned",
+    developer_id: null, developer_name: null,
+    dev_started_at: null, test_started_at: null, reminders_sent: null,
+    version: (t.version ?? 1) + 1,
+    last_status_change: now, updated_at: now,
+  });
+  if (!updated) return { ok: false, error: "تعذر إعادة الإرسال" };
+  // إزالة متخصصي الجولة السابقة — الإسناد يُعاد بعد تسليم التيست الجديد
+  for (const sp of await repo.specialistList(ticketId)) await repo.specialistRemove(sp.id);
+  if (t.tester_id) {
+    await repo.assignmentCreate({ ticket_id: ticketId, assignment_role: "tester", staff_id: t.tester_id, assigned_by: actor.staff_id });
+  }
+
+  const actorLabel = `${actor.name} (${ROLE_LABELS[actor.role]})`;
+  await repo.auditAdd({
+    entity_type: "ticket", entity_id: ticketId, action: "ticket.resubmitted",
+    actor_staff_id: actor.staff_id, actor_label: actorLabel,
+    old_values: { title: t.title, details: t.details.slice(0, 200), version: t.version ?? 1 },
+    new_values: { title, details: details.slice(0, 200), version: (t.version ?? 1) + 1 },
+  });
+  const evt = await repo.eventAdd({
+    ticket_id: ticketId, type: "note.added", actor_label: actorLabel,
+    old_values: null,
+    new_values: { note: `🔄 عُدّل الطلب وأُعيد إرساله بعد الرفض (نسخة ${(t.version ?? 1) + 1}) — الدورة بدأت من جديد` },
+  });
+  // إيميل إعادة الإرسال عبر قاعدة الأتمتة + إعادة تكليف التيستر بالبريد
+  await emit({
+    id: evt.id, type: "ticket.resubmitted",
+    ctx: {
+      ticket: updated, old: t, actor_label: actorLabel, actor_staff_id: actor.staff_id,
+      vars: { actor_name: actor.name, version: String((t.version ?? 1) + 1) },
+    },
+  });
+  if (updated.tester_id) await fireTesterAssignedEvent(updated, actorLabel, actor.staff_id);
+  return { ok: true };
 }

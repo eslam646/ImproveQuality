@@ -29,7 +29,7 @@ alter table automation_rules add constraint automation_rules_trigger_type_check 
   'tester.accepted','tester.declined','developer.accepted','developer.declined',
   'assignment.revoked','urgent.withdrawal','urgent.progress',
   'spec.assigned','spec.accepted','spec.declined','spec.ready','spec.overdue',
-  'ticket.rejected','test.failed','ticket.delivered','note.added',
+  'ticket.rejected','ticket.resubmitted','test.failed','ticket.delivered','note.added',
   'est.dev.halfway','est.dev.before_end','est.dev.overdue',
   'est.test.halfway','est.test.before_end','est.test.overdue',
   'field.changed','schedule.stale'

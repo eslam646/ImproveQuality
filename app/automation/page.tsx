@@ -24,6 +24,7 @@ const TRIGGER_LABELS: Record<TriggerType, string> = {
   "urgent.withdrawal": "🙅 اعتذار عن الدعم الفوري",
   "urgent.progress": "🚨 موقف الدعم الفوري",
   "ticket.rejected": "❌ رفض الطلب نهائياً",
+  "ticket.resubmitted": "🔄 إعادة إرسال بعد الرفض",
   "test.failed": "🧪 فشل الاختبار",
   "ticket.delivered": "📦 الإصلاح / التسليم",
   "note.added": "💬 ملاحظة جديدة",

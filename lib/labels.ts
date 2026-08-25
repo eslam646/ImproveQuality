@@ -70,8 +70,8 @@ export function allowedTransitions(role: Role, current: DevStatus): DevStatus[] 
   if (role === "support") return [];
   if (role === "tester") {
     // مرحلة الاستلام الأولي: يراجع البيانات — يعلّق الطلب أو يسلّمه للديف
-    if (current === "new") return ["needs_info", "handed_to_dev"] as DevStatus[];
-    if (current === "needs_info") return ["handed_to_dev", "new"] as DevStatus[];
+    if (current === "new") return ["needs_info", "handed_to_dev", "rejected"] as DevStatus[];
+    if (current === "needs_info") return ["handed_to_dev", "new", "rejected"] as DevStatus[];
     // مرحلة الاختبار: يبدأ عدّاد تقديره بـ«جاري الاختبار» ثم يحكم
     if (current === "ready_for_test") return ["testing"] as DevStatus[];
     if (current === "testing") return ["test_passed", "test_failed"] as DevStatus[];
