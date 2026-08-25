@@ -5,7 +5,7 @@ import { requireStaff, permissionsForStaff } from "@/lib/auth";
 import {
   addNoteAction, assignDeveloperAction, assignTesterAction,
   assignSpecialistAction, declineAssignmentAction, removeSpecialistAction, respondSpecialistAction,
-  respondToAssignmentAction, resubmitTicketAction, setEstimationAction, specialistReadyAction,
+  respondToAssignmentAction, resubmitTicketAction, setEstimationAction, specialistReadyAction, specialistStartAction,
 } from "@/app/actions/tickets";
 import { Badge, Button, Card, Field, Msg, selectCls, inputCls } from "@/components/ui";
 import { allowedTransitions, ALL_STATUSES, ASSIGNMENT_STATUS_LABELS, REQUEST_TYPE_LABELS, ROLE_LABELS, STATUS_COLORS, STATUS_LABELS, urgentStatusInfo } from "@/lib/labels";
@@ -210,7 +210,7 @@ export default async function TicketDetailsPage({
                   specialists.filter((x) => x.status !== "declined").map((sp) => (
                     <span key={sp.id} className="block">
                       {sp.staff_name}
-                      <span className="text-xs font-normal text-slate-400"> — {sp.spec_label} · {sp.status === "ready" ? "✅ جاهز" : sp.status === "accepted" ? "🔄 يعمل" : "⏳ بانتظار الرد"}</span>
+                      <span className="text-xs font-normal text-slate-400"> — {sp.spec_label} · {sp.status === "ready" ? "✅ جاهز" : sp.status === "accepted" ? (sp.started_at ? "🔄 يعمل" : "✔️ قَبِل — لم يبدأ") : "⏳ بانتظار الرد"}</span>
                     </span>
                   ))
                 ) : (
@@ -294,7 +294,9 @@ export default async function TicketDetailsPage({
                     const statusBadge = sp.status === "ready"
                       ? <Badge color="bg-emerald-100 text-emerald-800">✅ جاهز</Badge>
                       : sp.status === "accepted"
-                        ? <Badge color="bg-blue-100 text-blue-800">🔄 يعمل عليه (العدّاد يعد)</Badge>
+                        ? (sp.started_at
+                            ? <Badge color="bg-blue-100 text-blue-800">🔄 يعمل عليه (العدّاد يعد)</Badge>
+                            : <Badge color="bg-cyan-100 text-cyan-800">✔️ قَبِل — لم يبدأ بعد</Badge>)
                         : sp.status === "declined"
                           ? <Badge color="bg-rose-100 text-rose-800">❌ رفض — أعد الإسناد</Badge>
                           : <Badge color="bg-amber-100 text-amber-800">⏳ بانتظار الرد</Badge>;
@@ -327,7 +329,7 @@ export default async function TicketDetailsPage({
                               <input type="hidden" name="code" value={ticket.code} />
                               <input type="hidden" name="specialist_id" value={sp.id} />
                               <input type="hidden" name="decision" value="accepted" />
-                              <Button type="submit">✅ أقبل جزء {sp.spec_label} — يبدأ عدّادي</Button>
+                              <Button type="submit">✅ أقبل جزء {sp.spec_label}</Button>
                             </form>
                             <form action={respondSpecialistAction} className="flex gap-2">
                               <input type="hidden" name="code" value={ticket.code} />
@@ -338,12 +340,20 @@ export default async function TicketDetailsPage({
                             </form>
                           </div>
                         )}
-                        {mine && sp.status === "accepted" && (
+                        {mine && sp.status === "accepted" && !sp.started_at && (
+                          <form action={specialistStartAction} className="mt-3">
+                            <input type="hidden" name="code" value={ticket.code} />
+                            <input type="hidden" name="specialist_id" value={sp.id} />
+                            <Button type="submit">🚀 أبدأ الشغل الآن — قيد التطوير (يبدأ عدّادي)</Button>
+                            <p className="mt-1 text-xs text-slate-500">عدّاد تقديرك لا يبدأ إلا من هذه اللحظة — اضغط عندما تبدأ فعلياً.</p>
+                          </form>
+                        )}
+                        {mine && sp.status === "accepted" && sp.started_at && (
                           <form action={specialistReadyAction} className="mt-3 flex flex-wrap gap-2">
                             <input type="hidden" name="code" value={ticket.code} />
                             <input type="hidden" name="specialist_id" value={sp.id} />
                             <input name="note" placeholder="ملاحظة اختيارية عن التسليم…" className={`${inputCls} min-w-48 flex-1`} />
-                            <Button type="submit">✅ جزئي جاهز — تسليم {sp.spec_label}</Button>
+                            <Button type="submit">✅ جزئي جاهز — تسليم {sp.spec_label} للاختبار</Button>
                           </form>
                         )}
                       </li>

@@ -469,7 +469,18 @@ export async function respondSpecialistAction(formData: FormData) {
   const { respondSpecialistOp } = await import("@/lib/ops");
   const r = await respondSpecialistOp(specialistId, { staff_id: actor.id, name: actor.name }, decision, reason || undefined);
   revalidatePath(`/tickets/${code}`);
-  redirect(`/tickets/${code}?${r.ok ? `ok=${enc(decision === "accepted" ? "قبلت التكليف وبدأ عدّاد تقديرك ⏱️" : "سُجل رفضك وأُبلغت الإدارة بالسبب ✓")}` : `err=${enc(r.error ?? "تعذر التسجيل")}`}`);
+  redirect(`/tickets/${code}?${r.ok ? `ok=${enc(decision === "accepted" ? "قبلت التكليف ✓ — اضغط «أبدأ الشغل» عندما تبدأ فعلياً ليبدأ عدّادك" : "سُجل رفضك وأُبلغت الإدارة بالسبب ✓")}` : `err=${enc(r.error ?? "تعذر التسجيل")}`}`);
+}
+
+// المتخصص يبدأ الشغل فعلياً — يبدأ عدّاده وتتحول التاسك «قيد التطوير»
+export async function specialistStartAction(formData: FormData) {
+  const actor = await requireStaff(["developer", "admin"]);
+  const code = String(formData.get("code") ?? "");
+  const specialistId = String(formData.get("specialist_id") ?? "");
+  const { specialistStartOp } = await import("@/lib/ops");
+  const r = await specialistStartOp(specialistId, { staff_id: actor.id, name: actor.name });
+  revalidatePath(`/tickets/${code}`);
+  redirect(`/tickets/${code}?${r.ok ? `ok=${enc("🚀 بدأت الشغل — عدّاد تقديرك يعمل الآن والتاسك قيد التطوير")}` : `err=${enc(r.error ?? "تعذر التسجيل")}`}`);
 }
 
 // المتخصص يعلن الجاهزية — ولو الجميع جاهز تتحول التاسك «جاهز للاختبار»

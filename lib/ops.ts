@@ -860,10 +860,11 @@ export async function respondSpecialistOp(
 
   const t = await repo.ticketById(sp.ticket_id);
   if (!t) return { ok: false, error: "الطلب غير موجود" };
+  // القبول التزام فقط — العدّاد لا يبدأ إلا عندما يضغط «أبدأ الشغل» بنفسه
   await repo.specialistUpdate(sp.id, {
     status: decision, responded_at: nowIso(),
     decline_reason: decision === "declined" ? reason!.trim() : null,
-    started_at: decision === "accepted" ? nowIso() : null,
+    started_at: null,
   });
   if (decision === "declined") await recalcTicketEstimation(sp.ticket_id);
 
@@ -876,7 +877,7 @@ export async function respondSpecialistOp(
   const evt = await repo.eventAdd({
     ticket_id: sp.ticket_id, type: "note.added", actor_label: actorLabel,
     old_values: null,
-    new_values: { note: `${decision === "accepted" ? `✅ قبل تكليف «${sp.spec_label}» وبدأ عدّاد تقديره` : `❌ رفض تكليف «${sp.spec_label}» — السبب: ${reason?.trim()}`}` },
+    new_values: { note: `${decision === "accepted" ? `✅ قبل تكليف «${sp.spec_label}» — العدّاد يبدأ عندما يبدأ الشغل فعلياً` : `❌ رفض تكليف «${sp.spec_label}» — السبب: ${reason?.trim()}`}` },
   });
   await emit({
     id: evt.id, type: decision === "accepted" ? "spec.accepted" : "spec.declined",
@@ -885,6 +886,42 @@ export async function respondSpecialistOp(
       vars: await specialistVars(sp, { actor_name: actor.name, reason: reason?.trim() ?? "" }),
     },
   });
+  return { ok: true };
+}
+
+// المتخصص يبدأ الشغل فعلياً — هنا فقط يبدأ عدّاد تقديره (القبول التزام والبدء شغل)
+// وأول متخصص يبدأ يحوّل التاسك «قيد التطوير» تلقائياً
+export async function specialistStartOp(
+  specialistId: string,
+  actor: { staff_id: string; name: string },
+): Promise<{ ok: boolean; error?: string }> {
+  const repo = await getRepo();
+  const sp = await repo.specialistGet(specialistId);
+  if (!sp || !sp.is_current) return { ok: false, error: "التكليف غير موجود أو سُحب" };
+  if (sp.staff_id !== actor.staff_id) return { ok: false, error: "هذا التكليف غير مسند إليك" };
+  if (sp.status === "pending") return { ok: false, error: "اقبل التكليف أولاً قبل بدء الشغل" };
+  if (sp.status === "ready") return { ok: false, error: "أعلنت الجاهزية بالفعل — انتهى دورك" };
+  if (sp.status !== "accepted") return { ok: false, error: "لا يمكن بدء الشغل على هذا التكليف" };
+  if (sp.started_at) return { ok: false, error: "بدأت الشغل بالفعل — عدّادك يعمل" };
+  const t = await repo.ticketById(sp.ticket_id);
+  if (!t) return { ok: false, error: "الطلب غير موجود" };
+
+  await repo.specialistUpdate(sp.id, { started_at: nowIso() });
+  const actorLabel = `${actor.name} (${sp.spec_label})`;
+  await repo.auditAdd({
+    entity_type: "ticket", entity_id: sp.ticket_id, action: "specialist.started",
+    actor_staff_id: actor.staff_id, actor_label: actorLabel,
+    old_values: { started_at: null }, new_values: { started_at: nowIso() },
+  });
+  await repo.eventAdd({
+    ticket_id: sp.ticket_id, type: "note.added", actor_label: actorLabel,
+    old_values: null,
+    new_values: { note: `🚀 بدأ ${actor.name} الشغل على جزء «${sp.spec_label}» — عدّاد تقديره يعمل الآن` },
+  });
+  // أول واحد يبدأ فعلياً → التاسك كلها «قيد التطوير»
+  if (t.dev_status === "handed_to_dev" || t.dev_status === "needs_info") {
+    await changeStatusOp(sp.ticket_id, "in_progress", `النظام — بدأ ${actor.name} («${sp.spec_label}») الشغل فعلياً`);
+  }
   return { ok: true };
 }
 
@@ -900,6 +937,7 @@ export async function specialistReadyOp(
   if (sp.staff_id !== actor.staff_id) return { ok: false, error: "هذا التكليف غير مسند إليك" };
   if (sp.status === "ready") return { ok: false, error: "أعلنت الجاهزية بالفعل" };
   if (sp.status !== "accepted") return { ok: false, error: "اقبل التكليف أولاً قبل إعلان الجاهزية" };
+  if (!sp.started_at) return { ok: false, error: "ابدأ الشغل أولاً («قيد التطوير») ثم أعلن الجاهزية عند الانتهاء" };
   const t = await repo.ticketById(sp.ticket_id);
   if (!t) return { ok: false, error: "الطلب غير موجود" };
 
