@@ -133,8 +133,13 @@ export async function upsertStaffAction(input: { id?: string; name: string; emai
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message };
   const repo = await getRepo();
   const d = { ...parsed.data, manager_id: parsed.data.manager_id || null, specializations: parsed.data.role === "developer" ? (parsed.data.specializations ?? null) : null };
-  if (input.id) await repo.staffUpdate(input.id, d);
-  else await repo.staffCreate(d);
+  // أخطاء قاعدة البيانات (عمود ناقص/قيد فريد...) تعود رسالة واضحة بدل فشل صامت في الواجهة
+  try {
+    if (input.id) await repo.staffUpdate(input.id, d);
+    else await repo.staffCreate(d);
+  } catch (e) {
+    return { ok: false, error: `تعذر الحفظ: ${String(e instanceof Error ? e.message : e).slice(0, 200)}` };
+  }
   revalidatePath("/staff");
   return { ok: true };
 }
