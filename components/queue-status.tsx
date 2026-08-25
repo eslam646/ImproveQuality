@@ -2,9 +2,12 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { listPendingEmailJobsAction, processQueueNowAction } from "@/app/actions/admin";
+import { listPendingEmailJobsAction, processQueueNowAction, sendSingleJobAction } from "@/app/actions/admin";
 
-type PendingJob = { id: string; ticket: string; template: string; status: string; attempts: number; runAfter: string; reason: string };
+type PendingJob = {
+  id: string; ticket: string; template: string; status: string; attempts: number;
+  runAfter: string; reason: string; to: string[]; cc: string[]; excluded: string | null;
+};
 
 const JOB_STATUS: Record<string, { l: string; c: string }> = {
   queued: { l: "في الانتظار", c: "bg-amber-100 text-amber-800" },
@@ -13,13 +16,22 @@ const JOB_STATUS: Record<string, { l: string; c: string }> = {
   failed: { l: "فشلت", c: "bg-rose-100 text-rose-700" },
 };
 
-// لوحة تشخيص طابور البريد: كام رسالة منتظرة/فاشلة + زر معالجة فورية + قائمة تفصيلية بكل رسالة لم تُرسل وسببها
+// لوحة تشخيص طابور البريد: عدّادات + معالجة جماعية + قائمة تفصيلية (المستلمون والسبب) + إرسال فردي لكل رسالة
 export function QueueStatus({ queued, dead, lastError }: { queued: number; dead: number; lastError: string | null }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [detailsBusy, setDetailsBusy] = useState(false);
   const [details, setDetails] = useState<PendingJob[] | null>(null);
+  const [rowBusy, setRowBusy] = useState<string | null>(null);
+  const [rowMsg, setRowMsg] = useState<Record<string, string>>({});
+
+  const loadDetails = async () => {
+    setDetailsBusy(true);
+    const r = await listPendingEmailJobsAction() as { ok: boolean; jobs?: PendingJob[] };
+    setDetailsBusy(false);
+    setDetails(r.jobs ?? []);
+  };
 
   const healthy = queued === 0 && dead === 0;
   return (
@@ -30,7 +42,7 @@ export function QueueStatus({ queued, dead, lastError }: { queued: number; dead:
             {healthy ? "✅ طابور البريد سليم — لا رسائل عالقة" : `⚠️ في الطابور: ${queued} بانتظار الإرسال${dead ? ` — ${dead} فشلت نهائياً` : ""}`}
           </p>
           <p className="mt-0.5 text-xs text-slate-500">
-            الإرسال يتم فور كل حدث تلقائياً — «معالجة الآن» تستعيد العالق وتجبر المؤجل وترسل الجميع فوراً.
+            الإرسال يتم فور كل حدث تلقائياً — «معالجة الآن» تستعيد العالق وترسل الجميع، أو أرسل كل رسالة منفردة من القائمة.
           </p>
           {lastError && <p className="mt-1 text-xs font-semibold text-rose-600">آخر خطأ: {lastError.slice(0, 160)}</p>}
         </div>
@@ -39,13 +51,7 @@ export function QueueStatus({ queued, dead, lastError }: { queued: number; dead:
             <button
               disabled={detailsBusy}
               className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
-              onClick={async () => {
-                if (details) { setDetails(null); return; }
-                setDetailsBusy(true);
-                const r = await listPendingEmailJobsAction() as { ok: boolean; jobs?: PendingJob[] };
-                setDetailsBusy(false);
-                setDetails(r.jobs ?? []);
-              }}
+              onClick={async () => { if (details) { setDetails(null); return; } await loadDetails(); }}
             >
               {detailsBusy ? "⏳…" : details ? "إخفاء التفاصيل" : "🔎 ما الذي لم يُرسل ولماذا؟"}
             </button>
@@ -64,7 +70,7 @@ export function QueueStatus({ queued, dead, lastError }: { queued: number; dead:
               router.refresh();
             }}
           >
-            {busy ? "⏳ جارٍ المعالجة…" : "🚀 معالجة الآن"}
+            {busy ? "⏳ جارٍ المعالجة…" : "🚀 معالجة الآن (الكل)"}
           </button>
           {msg && <span className="text-xs font-semibold text-slate-600">{msg}</span>}
         </span>
@@ -80,21 +86,48 @@ export function QueueStatus({ queued, dead, lastError }: { queued: number; dead:
                 <tr>
                   <th className="px-3 py-2">الطلب</th>
                   <th className="px-3 py-2">القالب / الرسالة</th>
+                  <th className="px-3 py-2">سيصل إلى</th>
                   <th className="px-3 py-2">الحالة</th>
-                  <th className="px-3 py-2">المحاولات</th>
                   <th className="px-3 py-2">السبب — لماذا لم تُرسل؟</th>
+                  <th className="px-3 py-2">إجراء</th>
                 </tr>
               </thead>
               <tbody>
                 {details.map((j) => (
                   <tr key={j.id} className="border-t border-slate-100 align-top">
                     <td className="px-3 py-2 font-mono font-bold" dir="ltr">{j.ticket}</td>
-                    <td className="px-3 py-2">{j.template}</td>
-                    <td className="px-3 py-2">
-                      <span className={`rounded-full px-2 py-0.5 font-bold ${JOB_STATUS[j.status]?.c ?? "bg-slate-100"}`}>{JOB_STATUS[j.status]?.l ?? j.status}</span>
+                    <td className="px-3 py-2">{j.template}<div className="mt-0.5 text-[10px] text-slate-400">محاولات: {j.attempts}</div></td>
+                    <td className="px-3 py-2 leading-relaxed">
+                      {j.to.length === 0 && j.cc.length === 0 ? (
+                        <span className="text-slate-400">لا مستلمين (لن تُرسل)</span>
+                      ) : (
+                        <>
+                          {j.to.map((r, i) => <div key={`t${i}`} dir="ltr" className="text-slate-700"><b className="text-[10px] text-blue-600">To</b> {r}</div>)}
+                          {j.cc.map((r, i) => <div key={`c${i}`} dir="ltr" className="text-slate-500"><b className="text-[10px] text-slate-400">CC</b> {r}</div>)}
+                        </>
+                      )}
+                      {j.excluded && <div className="mt-0.5 text-[10px] text-amber-600">⊘ مستثنى: {j.excluded}</div>}
                     </td>
-                    <td className="px-3 py-2">{j.attempts}</td>
+                    <td className="px-3 py-2">
+                      <span className={`whitespace-nowrap rounded-full px-2 py-0.5 font-bold ${JOB_STATUS[j.status]?.c ?? "bg-slate-100"}`}>{JOB_STATUS[j.status]?.l ?? j.status}</span>
+                    </td>
                     <td className="px-3 py-2 leading-relaxed text-slate-600">{j.reason}</td>
+                    <td className="px-3 py-2">
+                      <button
+                        disabled={rowBusy === j.id || (j.to.length === 0 && j.cc.length === 0)}
+                        className="whitespace-nowrap rounded-lg bg-emerald-600 px-3 py-1.5 font-bold text-white hover:bg-emerald-700 disabled:opacity-40"
+                        onClick={async () => {
+                          setRowBusy(j.id);
+                          const r = await sendSingleJobAction(j.id) as { ok: boolean; error?: string };
+                          setRowBusy(null);
+                          setRowMsg((m) => ({ ...m, [j.id]: r.ok ? "أُرسلت ✓" : r.error ?? "فشل" }));
+                          if (r.ok) { await loadDetails(); router.refresh(); }
+                        }}
+                      >
+                        {rowBusy === j.id ? "⏳…" : "📤 إرسال هذه فقط"}
+                      </button>
+                      {rowMsg[j.id] && <div className={`mt-1 text-[10px] font-bold ${rowMsg[j.id].includes("✓") ? "text-emerald-600" : "text-rose-600"}`}>{rowMsg[j.id]}</div>}
+                    </td>
                   </tr>
                 ))}
               </tbody>

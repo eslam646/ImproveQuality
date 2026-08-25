@@ -47,6 +47,54 @@ export async function processDueJobs(limit = 25): Promise<Omit<ProcessReport, "r
   return report;
 }
 
+// معالجة مهمة واحدة بعينها (زر «إرسال هذه الرسالة» في لوحة الطابور) — يستعيدها أولاً لو كانت عالقة/مؤجلة
+export async function processOneJob(jobId: string): Promise<{ ok: boolean; error?: string }> {
+  const repo = await getRepo();
+  const settings = await repo.settingsGet();
+  const job = (await repo.jobsRecent(300)).find((j) => j.id === jobId);
+  if (!job) return { ok: false, error: "المهمة غير موجودة" };
+  if (job.status === "done") return { ok: false, error: "أُرسلت بالفعل" };
+  // استعادة العالقة/الميتة/المؤجلة → queued مستحقة الآن ثم قفل عادي
+  await repo.jobRequeue(jobId);
+  if (!(await repo.jobClaim(jobId))) return { ok: false, error: "تعذر قفل المهمة — جرّب مجدداً" };
+  try {
+    const fresh = (await repo.jobsRecent(300)).find((j) => j.id === jobId) ?? job;
+    await executeJob({ ...fresh, status: "processing" }, settings);
+    await repo.jobDone(jobId);
+    return { ok: true };
+  } catch (e) {
+    const err = String(e).slice(0, 300);
+    await repo.jobFail(jobId, err, null);
+    return { ok: false, error: err };
+  }
+}
+
+// معاينة مستلمي مهمة بريد (بدون إرسال): مين هيستلم To ومين CC — بالأسماء والعناوين
+export async function previewJobRecipients(jobId: string): Promise<{ to: string[]; cc: string[]; excluded: string | null }> {
+  const repo = await getRepo();
+  const job = (await repo.jobsRecent(300)).find((j) => j.id === jobId);
+  if (!job) return { to: [], cc: [], excluded: null };
+  const action = (job.payload as { action: Action }).action;
+  if (action.type !== "send_email") return { to: [], cc: [], excluded: null };
+  const ticketId = (job.payload as { ticket_id: string }).ticket_id;
+  const ticket = await repo.ticketById(ticketId);
+  if (!ticket) return { to: [], cc: [], excluded: null };
+  const extra = ((job.payload as { extra_vars?: { custom?: Record<string, string> | null; exclude_staff_id?: string | null } }).extra_vars) ?? {};
+  const custom = extra.custom as Record<string, string> | null | undefined;
+  const extraResolve = {
+    previous_assignee_id: custom?.previous_assignee_id ?? null,
+    event_target_id: custom?.specialist_id ?? custom?.event_target_id ?? null,
+  };
+  const toRes = await resolveRecipients(repo, ticket, action.to, extraResolve);
+  const ccRes = await resolveRecipients(repo, ticket, action.cc, extraResolve);
+  const label = (s: { name: string; email: string | null }) => `${s.name} <${s.email ?? "بلا بريد"}>`;
+  const excludeId = extra.exclude_staff_id ?? null;
+  const excludedStaff = excludeId ? [...toRes.staff, ...ccRes.staff].find((s) => s.id === excludeId) : null;
+  const to = [...toRes.staff.filter((s) => s.id !== excludeId).map(label), ...toRes.emails];
+  const cc = [...ccRes.staff.filter((s) => s.id !== excludeId).map(label), ...ccRes.emails.filter((e) => !toRes.emails.includes(e))];
+  return { to, cc, excluded: excludedStaff ? `${excludedStaff.name} (منفّذ الفعل — يُستثنى تلقائياً)` : null };
+}
+
 export async function processAll(): Promise<ProcessReport> {
   // استعادة العالق «قيد المعالجة» (انقطعت عمليته على Cloudflare قبل الإرسال) — يعود للطابور تلقائياً
   try { const repo = await getRepo(); await repo.jobsRecoverStuck(5); } catch (e) { console.error("recover stuck:", e); }

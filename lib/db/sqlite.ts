@@ -720,6 +720,9 @@ export function createSqliteRepo(): Repo {
       const r = db.prepare("UPDATE jobs SET run_after=? WHERE status='queued' AND run_after>?").run(nowIso(), nowIso());
       return r.changes;
     },
+    async jobRequeue(id) {
+      db.prepare("UPDATE jobs SET status='queued', run_after=? WHERE id=? AND status!='done'").run(nowIso(), id);
+    },
     async jobClaim(id) {
       const r = db.prepare("UPDATE jobs SET status='processing' WHERE id=? AND status='queued'").run(id);
       return r.changes > 0;

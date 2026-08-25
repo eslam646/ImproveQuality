@@ -430,12 +430,13 @@ export async function processQueueNowAction() {
   }
 }
 
-// ====== قائمة غير المُرسل: كل مهمة بريد لم تصل + سببها الفعلي ======
+// ====== قائمة غير المُرسل: كل مهمة بريد لم تصل + سببها + مستلموها المتوقعون ======
 export async function listPendingEmailJobsAction() {
   await requireStaff(["admin"]);
   const repo = await getRepo();
+  const { previewJobRecipients } = await import("@/lib/worker");
   const jobs = (await repo.jobsRecent(200)).filter((j) => j.type === "send_email" && ["queued", "processing", "dead", "failed"].includes(j.status));
-  const out: { id: string; ticket: string; template: string; status: string; attempts: number; runAfter: string; reason: string }[] = [];
+  const out: { id: string; ticket: string; template: string; status: string; attempts: number; runAfter: string; reason: string; to: string[]; cc: string[]; excluded: string | null }[] = [];
   for (const j of jobs) {
     const p = j.payload as { ticket_id?: string; action?: { template_id?: string } };
     const t = p.ticket_id ? await repo.ticketById(p.ticket_id) : null;
@@ -450,6 +451,7 @@ export async function listPendingEmailJobsAction() {
           : overdue
             ? "مستحقة الآن ولم يلتقطها المعالج بعد — اضغط «معالجة الآن»"
             : "مجدولة لاحقاً (تذكير/تأجيل مقصود)";
+    const rec = await previewJobRecipients(j.id).catch(() => ({ to: [], cc: [], excluded: null }));
     out.push({
       id: j.id,
       ticket: t?.code ?? "—",
@@ -458,7 +460,17 @@ export async function listPendingEmailJobsAction() {
       attempts: j.attempts,
       runAfter: j.run_after,
       reason: reason.slice(0, 300),
+      to: rec.to, cc: rec.cc, excluded: rec.excluded,
     });
   }
   return { ok: true, jobs: out };
+}
+
+// ====== إرسال مهمة بريد واحدة بعينها (زر فردي في لوحة الطابور) ======
+export async function sendSingleJobAction(jobId: string) {
+  await requireStaff(["admin"]);
+  const { processOneJob } = await import("@/lib/worker");
+  const r = await processOneJob(jobId);
+  revalidatePath("/emails");
+  return r;
 }

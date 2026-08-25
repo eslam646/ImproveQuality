@@ -115,6 +115,8 @@ export interface Repo {
   jobsRecoverStuck(olderThanMinutes: number): Promise<number>;
   // إجبار المؤجل: كل queued مؤجلة (backoff) تصبح مستحقة الآن — للزر اليدوي
   jobsForceDue(): Promise<number>;
+  // إعادة مهمة واحدة للطابور مستحقة الآن (لإرسال فردي مهما كانت حالتها)
+  jobRequeue(id: string): Promise<void>;
   jobClaim(id: string): Promise<boolean>;
   jobDone(id: string): Promise<void>;
   jobFail(id: string, err: string, retryAtIso: string | null): Promise<void>;
