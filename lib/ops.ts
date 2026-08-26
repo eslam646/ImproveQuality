@@ -1065,7 +1065,10 @@ export async function specialistReadyOp(
   if (!t) return { ok: false, error: "الطلب غير موجود" };
   if (FINAL_STATUSES.includes(t.dev_status)) return { ok: false, error: `الطلب ${STATUS_LABELS[t.dev_status]} — لا إجراءات بعد الإقفال النهائي` };
 
-  await repo.specialistUpdate(sp.id, { status: "ready", ready_at: nowIso() });
+  // إجمالي الوقت الفعلي يتراكم عبر الجولات: دقائق هذه الجولة (من بدئها حتى التسليم) تُضاف للمجموع
+  const roundMinutes = Math.max(0, (Date.now() - Date.parse(sp.started_at)) / 60000);
+  const totalWorked = (sp.worked_minutes ?? 0) + roundMinutes;
+  await repo.specialistUpdate(sp.id, { status: "ready", ready_at: nowIso(), worked_minutes: totalWorked });
   const actorLabel = `${actor.name} (${sp.spec_label})`;
 
   // هل الجميع جاهز؟ (نتجاهل المرفوضين — خاناتهم بانتظار إعادة إسناد ولا تعطل)

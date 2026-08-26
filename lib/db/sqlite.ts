@@ -134,6 +134,7 @@ export function createSqliteRepo(): Repo {
     assigned_by TEXT, assigned_at TEXT NOT NULL, responded_at TEXT, is_current INTEGER NOT NULL DEFAULT 1
   );
   CREATE INDEX IF NOT EXISTS idx_specialists_ticket ON ticket_specialists(ticket_id, is_current);`);
+  try { db.exec("ALTER TABLE ticket_specialists ADD COLUMN worked_minutes REAL NOT NULL DEFAULT 0"); } catch { /* موجود */ }
   try { db.exec("ALTER TABLE tickets ADD COLUMN is_urgent INTEGER NOT NULL DEFAULT 0"); } catch { /* موجود */ }
   try { db.exec("ALTER TABLE tickets ADD COLUMN title TEXT"); } catch { /* موجود */ }
   try { db.exec("ALTER TABLE tickets ADD COLUMN request_type TEXT NOT NULL DEFAULT 'issue'"); } catch { /* موجود */ }
@@ -606,7 +607,7 @@ export function createSqliteRepo(): Repo {
     },
     async specialistUpdate(id, patch) {
       const sets: string[] = []; const args: unknown[] = [];
-      for (const k of ["status","est_days","est_hours","started_at","ready_at","decline_reason","responded_at","staff_id","staff_name"] as const) {
+      for (const k of ["status","est_days","est_hours","started_at","ready_at","decline_reason","responded_at","staff_id","staff_name","worked_minutes"] as const) {
         if (patch[k] !== undefined) { sets.push(`${k}=?`); args.push(patch[k] as unknown); }
       }
       if (patch.reminders_sent !== undefined) { sets.push("reminders_sent=?"); args.push(patch.reminders_sent ? JSON.stringify(patch.reminders_sent) : null); }

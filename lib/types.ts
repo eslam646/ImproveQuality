@@ -332,6 +332,7 @@ export interface TicketSpecialist {
   est_hours: number | null;
   started_at: string | null;   // بدء العمل — يبدأ عدّاده
   ready_at: string | null;     // أعلن الجاهزية
+  worked_minutes?: number;     // إجمالي الدقائق الفعلية عبر كل الجولات (يتراكم عند كل تسليم)
   decline_reason: string | null;
   reminders_sent: Record<string, string> | null;
   assigned_by: string | null;

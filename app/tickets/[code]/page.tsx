@@ -347,15 +347,25 @@ export default async function TicketDetailsPage({
                         </div>
                         {/* ⏱️ العدّاد الحي (زي الدعم الفوري): يعد لايف أثناء الشغل — وبعد التسليم يعرض الوقت الفعلي المستخدم */}
                         {sp.status === "accepted" && sp.started_at && (
-                          <div className="mt-2">
+                          <div className="mt-2 flex flex-wrap items-center gap-2">
                             <LiveTimer startedAt={sp.started_at} estimateHours={estToHours(sp.est_days, sp.est_hours, dayHours)} label={mine ? "شغال منذ" : `${sp.staff_name.split(" ")[0]} شغال منذ`} dayHours={dayHours} />
+                            {(sp.worked_minutes ?? 0) > 1 && (
+                              <span className="rounded-lg bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">
+                                + {fmtMinutes(sp.worked_minutes!)} من جولات سابقة
+                              </span>
+                            )}
                           </div>
                         )}
-                        {sp.status === "ready" && sp.started_at && sp.ready_at && (
-                          <p className="mt-2 inline-flex items-center gap-1 rounded-lg bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-800">
-                            ✓ الوقت الفعلي المستخدم: {fmtMinutes(Math.max(0, (Date.parse(sp.ready_at) - Date.parse(sp.started_at)) / 60000))}
-                          </p>
-                        )}
+                        {sp.status === "ready" && sp.started_at && sp.ready_at && (() => {
+                          const lastRound = Math.max(0, (Date.parse(sp.ready_at) - Date.parse(sp.started_at)) / 60000);
+                          const total = sp.worked_minutes && sp.worked_minutes > lastRound + 1 ? sp.worked_minutes : null;
+                          return (
+                            <p className="mt-2 inline-flex flex-wrap items-center gap-1 rounded-lg bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-800">
+                              ✓ الوقت الفعلي المستخدم: {fmtMinutes(lastRound)}
+                              {total && <span className="text-emerald-600">— الإجمالي عبر كل الجولات: {fmtMinutes(total)}</span>}
+                            </p>
+                          );
+                        })()}
                         {sp.decline_reason && <p className="mt-1 text-xs text-rose-600">سبب الرفض: {sp.decline_reason}</p>}
 
                         {canAssignDev && sp.status !== "ready" && (
