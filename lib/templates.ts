@@ -114,7 +114,15 @@ export function renderBlocks(
     if (key === "priority" && blocks.priority) info += row("التصنيف / الأولوية", `${esc(vars.ticket_kind)} — ${esc(vars.priority)}`);
     if (key === "creator" && blocks.creator) info += row("مدخل البيانات", esc(vars.created_by_name));
     if (key === "tester" && blocks.tester) info += row("التيستر المسند", esc(vars.tester_name));
-    if (key === "developer" && blocks.developer) info += row("فريق التطوير", esc(vars.developer_name === "غير محدد" ? "لم يُسند بعد — يُسند بعد استلام التيست" : vars.developer_name));
+    if (key === "developer" && blocks.developer) {
+      // دعم فوري = مطور مباشر («المطور المسند») — عادي = فريق تخصصات («فريق التطوير»)
+      const urgent = vars.ticket_kind === "دعم فوري";
+      const label = urgent ? "المطور المسند" : "فريق التطوير";
+      const value = vars.developer_name === "غير محدد"
+        ? (urgent ? "غير محدد" : "لم يُسند بعد — يُسند بعد استلام التيست")
+        : vars.developer_name;
+      info += row(label, esc(value));
+    }
     if (key === "estimation" && blocks.estimation) {
       const split = (vars.dev_estimation && vars.dev_estimation !== "غير محدد") || (vars.test_estimation && vars.test_estimation !== "غير محدد")
         ? ` <span style="color:#94a3b8;font-size:12px">(ديف: ${esc(vars.dev_estimation)} · تيست: ${esc(vars.test_estimation)})</span>`
