@@ -408,7 +408,9 @@ export async function changeStatusAction(formData: FormData) {
   if (t.is_urgent) {
     redirect(`/tickets/${code}?err=${enc("الدعم الفوري لا يمر بحالات التطوير — استخدم «موقف الدعم الفوري»: مازلت أعمل / انتهيت، أو الاعتذار")}`);
   }
-  const allowed = actor.role === "support" ? ALL_STATUSES.filter((s) => s !== t.dev_status) : allowedTransitions(actor.role, t.dev_status);
+  const { permissionsForStaff: permsOf } = await import("@/lib/auth");
+  const actorPerms = await permsOf(actor);
+  const allowed = actor.role === "support" ? ALL_STATUSES.filter((s) => s !== t.dev_status) : allowedTransitions(actor.role, t.dev_status, { closeAfterPass: !!actorPerms.close_after_pass });
   if (!allowed.includes(status)) {
     redirect(`/tickets/${code}?err=${enc("غير مصرح لك بهذا التحويل")}`);
   }

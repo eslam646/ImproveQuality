@@ -38,7 +38,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "يجب قبول تكليف الاختبار أولاً" }, { status: 403 });
   if (actor.role === "developer" && t.developer_assignment_status !== "accepted")
     return NextResponse.json({ error: "يجب قبول تكليف التطوير أولاً" }, { status: 403 });
-  const allowed = actor.role === "support" ? ALL_STATUSES.filter((s) => s !== t.dev_status) : allowedTransitions(actor.role, t.dev_status);
+  const allowed = actor.role === "support" ? ALL_STATUSES.filter((s) => s !== t.dev_status) : allowedTransitions(actor.role, t.dev_status, { closeAfterPass: !!perms.close_after_pass });
   if (!allowed.includes(parsed.data.dev_status as never)) {
     return NextResponse.json({ error: "تحويل الحالة غير مسموح لدورك أو للحالة الحالية" }, { status: 403 });
   }

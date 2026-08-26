@@ -31,7 +31,7 @@ export default async function PublicUpdateFormPage({
   const transitions = ticket && actor
     ? (actor.role === "support" || actor.role === "admin"
         ? ALL_STATUSES.filter((s) => s !== ticket.dev_status)
-        : allowedTransitions(actor.role, ticket.dev_status))
+        : allowedTransitions(actor.role, ticket.dev_status, { closeAfterPass: !!perms?.close_after_pass }))
     : [];
 
   return (

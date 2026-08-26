@@ -63,7 +63,7 @@ export const STATUS_COLORS: Record<DevStatus, string> = {
 // سير العمل الجديد: الطلب يبدأ عند التيست (جديد/بانتظار معلومات) ← التيست يسلّم للديف «تم التسليم للديف»
 // ← الديف يبدأ «قيد التطوير» (يبدأ عدّاد تقديره) ← «جاهز للاختبار» ← التيست يبدأ «جاري الاختبار»
 // (يبدأ عدّاد تقديره) ← اجتاز / فشل الاختبار
-export function allowedTransitions(role: Role, current: DevStatus): DevStatus[] {
+export function allowedTransitions(role: Role, current: DevStatus, opts?: { closeAfterPass?: boolean }): DevStatus[] {
   const all = ALL_STATUSES.filter((s) => s !== current);
   if (role === "admin") return all;
   // مدخل البيانات View-only: يضيف ملاحظات فقط ولا يغيّر الحالة
@@ -75,6 +75,8 @@ export function allowedTransitions(role: Role, current: DevStatus): DevStatus[] 
     // مرحلة الاختبار: يبدأ عدّاد تقديره بـ«جاري الاختبار» ثم يحكم
     if (current === "ready_for_test") return ["testing"] as DevStatus[];
     if (current === "testing") return ["test_passed", "test_failed"] as DevStatus[];
+    // بعد الاجتياز: الإغلاق والتسليم بيد التيستر بصلاحية «إغلاق وتسليم بعد اجتياز الاختبار»
+    if (current === "test_passed" && opts?.closeAfterPass) return ["closed"] as DevStatus[];
     return [];
   }
   if (role === "developer") {

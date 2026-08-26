@@ -122,7 +122,7 @@ export default async function TicketDetailsPage({
   // الطلب المرفوض: لا تغيير حالة لغير الأدمن — يعود للحياة فقط بإعادة الإرسال من صاحبه
   const transitions = ticket.is_urgent || !perms.change_status || !acceptedForRole || (isRejected && actor.role !== "admin")
     ? []
-    : actor.role === "support" ? ALL_STATUSES.filter((s) => s !== ticket.dev_status) : allowedTransitions(actor.role, ticket.dev_status);
+    : actor.role === "support" ? ALL_STATUSES.filter((s) => s !== ticket.dev_status) : allowedTransitions(actor.role, ticket.dev_status, { closeAfterPass: !!perms.close_after_pass });
   const noteLabel = actor.role === "developer" ? "ملاحظات الديف" : actor.role === "tester" ? "ملاحظات التيست" : "ملاحظة مدخل البيانات";
   const canNote = perms.add_note && (perms.view_all_tickets || ticket.created_by === actor.id || isAssignedTester || isAssignedDev || mySpecialistRoles.length > 0);
   // الدعم الفوري «طلب جانبي»: المكلَّف الذي قَبِل يحدّث موقفه (مازلت أعمل / انتهيت) — والأدمن يقدر أيضاً (يُسجل باسمه)
