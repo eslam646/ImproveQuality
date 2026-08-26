@@ -211,6 +211,7 @@ export async function assignTesterOp(
   const old = await repo.ticketById(ticketId);
   if (!old) return null;
   if (old.dev_status === "rejected") return old; // مرفوض نهائياً — مجمّد حتى يعيد صاحبه إرساله
+  if (FINAL_STATUSES.includes(old.dev_status)) return old; // مغلق/تم الإصلاح — لا إسناد بعد الإقفال النهائي
   const ts = await repo.staffGet(testerId);
   if (!ts || ts.role !== "tester") return old;
   const patch: Partial<Ticket> = {
