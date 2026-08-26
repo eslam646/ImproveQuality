@@ -586,7 +586,8 @@ export default async function TicketDetailsPage({
                   </form>
                 )}
 
-                {(canEstimate || (isAssignedTester && !isFinal)) && (() => {
+                {/* الدعم الفوري بلا استيميشن إطلاقاً — الكارت للطلبات العادية فقط */}
+                {!ticket.is_urgent && (canEstimate || (isAssignedTester && !isFinal)) && (() => {
                   // تقدير الديف من كارت التخصصات (كل متخصص يضع تقديره) — حقول الديف هنا للتذاكر القديمة ذات المطور المباشر فقط
                   const showDevFields = canEstimate && !!ticket.developer_id && specialists.filter((x) => x.status !== "declined").length === 0;
                   const testerLocked = !!ticket.test_started_at && !canEstimate; // بدأ الاختبار الفعلي → تقدير التيست مجمّد (المدير يصحح إدارياً)
