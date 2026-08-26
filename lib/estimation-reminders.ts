@@ -139,9 +139,9 @@ export async function processSpecialistReminders(): Promise<number> {
   const cfg = settings.estimation_reminders;
   if (!cfg.enabled || !cfg.overdue) return 0;
 
-  // التذاكر النشطة في مرحلة التطوير فقط
+  // التذاكر النشطة في مرحلة التطوير + جولة الإصلاح بعد فشل الاختبار (المتخصصون يعملون فيها أيضاً)
   const candidates: Ticket[] = [];
-  for (const status of ["handed_to_dev", "in_progress"] as const) {
+  for (const status of ["handed_to_dev", "in_progress", "test_failed", "needs_info"] as const) {
     const { rows } = await repo.ticketList({ status, pageSize: 300 });
     candidates.push(...rows);
   }

@@ -83,7 +83,8 @@ export async function resolveRecipients(
       continue;
     }
     if (r.ref === "ticket_managers") {
-      for (const person of [creator, tester, developer]) {
+      // مديرو كل أطراف التذكرة — بمافيهم مديرو المتخصصين (فريق التطوير الحالي)
+      for (const person of [creator, tester, developer, ...specialistStaff]) {
         const manager = await managerOf(person);
         if (manager?.active) staffOut.push(manager);
       }
@@ -95,11 +96,20 @@ export async function resolveRecipients(
       specialistStaff.forEach((s) => staffOut.push(s));
       continue;
     }
+    if (r.ref === "developer_manager") {
+      // «مدير المطور» = مدير الديف المباشر (قديم/دعم فوري) + مديرو المتخصصين الحاليين
+      const devMgr = await managerOf(developer);
+      if (devMgr?.active) staffOut.push(devMgr);
+      for (const spStaff of specialistStaff) {
+        const m = await managerOf(spStaff);
+        if (m?.active) staffOut.push(m);
+      }
+      continue;
+    }
     let target: Staff | null = null;
     switch (r.ref) {
       case "tester": target = tester; break;
       case "creator": target = creator; break;
-      case "developer_manager": target = await managerOf(developer); break;
       case "tester_manager": target = await managerOf(tester); break;
       case "creator_manager": target = await managerOf(creator); break;
       case "client":
