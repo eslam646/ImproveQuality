@@ -31,8 +31,13 @@ export default async function EmailsPage({
   ]);
   const staff = staffRows.map((s) => ({ id: s.id, name: s.name, email: s.email, roleLabel: ROLE_LABELS[s.role] }));
   const pages = Math.max(1, Math.ceil(total / 20));
-  const queuedJobs = recentJobs.filter((j) => j.status === "queued" || j.status === "processing");
-  const deadJobs = recentJobs.filter((j) => j.status === "dead");
+  // العدّ الدقيق: بريد فقط (زي القائمة التفصيلية بالظبط) — مهام الإشعارات الداخلية لا تُحسب،
+  // والمجدول لوقت لاحق (تذكيرات) يُعرض منفصلاً حتى لا يبدو «عالقاً» وهو ينتظر موعده
+  const nowMs = Date.now();
+  const emailJobs = recentJobs.filter((j) => j.type === "send_email");
+  const queuedJobs = emailJobs.filter((j) => (j.status === "queued" && Date.parse(j.run_after) <= nowMs) || j.status === "processing");
+  const scheduledJobs = emailJobs.filter((j) => j.status === "queued" && Date.parse(j.run_after) > nowMs);
+  const deadJobs = emailJobs.filter((j) => j.status === "dead");
   const lastError = [...deadJobs, ...queuedJobs].find((j) => j.last_error)?.last_error ?? null;
 
   return (
@@ -43,7 +48,7 @@ export default async function EmailsPage({
           كل رسالة أرسلها النظام مسجلة هنا بالكامل — بدون مفاتيح API تعمل في «وضع التسجيل» (المعاينة الكاملة دون إرسال فعلي)
         </p>
       </div>
-      <QueueStatus queued={queuedJobs.length} dead={deadJobs.length} lastError={lastError} />
+      <QueueStatus queued={queuedJobs.length} dead={deadJobs.length} scheduled={scheduledJobs.length} lastError={lastError} />
       {rows.length === 0 ? (
         <EmptyState>لا يوجد بريد بعد — جرّب إنشاء طلب أو تغيير حالة لمشاهدة الأتمتة تعمل.</EmptyState>
       ) : (

@@ -17,7 +17,7 @@ const JOB_STATUS: Record<string, { l: string; c: string }> = {
 };
 
 // لوحة تشخيص طابور البريد: عدّادات + معالجة جماعية + قائمة تفصيلية (المستلمون والسبب) + إرسال فردي لكل رسالة
-export function QueueStatus({ queued, dead, lastError }: { queued: number; dead: number; lastError: string | null }) {
+export function QueueStatus({ queued, dead, scheduled = 0, lastError }: { queued: number; dead: number; scheduled?: number; lastError: string | null }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
@@ -42,9 +42,11 @@ export function QueueStatus({ queued, dead, lastError }: { queued: number; dead:
         <div>
           <p className="font-bold">
             {healthy ? "✅ طابور البريد سليم — لا رسائل عالقة" : `⚠️ في الطابور: ${queued} بانتظار الإرسال${dead ? ` — ${dead} فشلت نهائياً` : ""}`}
+            {scheduled > 0 && <span className="mr-2 font-normal text-slate-500">(+{scheduled} مجدولة لموعد لاحق — تذكيرات، ليست عالقة)</span>}
           </p>
           <p className="mt-0.5 text-xs text-slate-500">
             الإرسال يتم فور كل حدث تلقائياً — «معالجة الآن» تستعيد العالق وترسل الجميع، أو أرسل كل رسالة منفردة من القائمة.
+            <b className="text-emerald-700"> ولا تقلق من التكرار: ما أُرسل فعلاً لن يُرسل مرة ثانية أبداً.</b>
           </p>
           {lastError && <p className="mt-1 text-xs font-semibold text-rose-600">آخر خطأ: {lastError.slice(0, 160)}</p>}
         </div>
