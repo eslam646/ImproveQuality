@@ -46,6 +46,6 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "سبب الرفض / سبب فشل الاختبار إجباري — اكتبه ليُرسل في الإيميل" }, { status: 400 });
   }
 
-  const updated = await changeStatusOp(t.id, parsed.data.dev_status as never, `${actor.name} (${ROLE_LABELS[actor.role]})`, parsed.data.note || undefined);
+  const updated = await changeStatusOp(t.id, parsed.data.dev_status as never, `${actor.name} (${ROLE_LABELS[actor.role]})`, parsed.data.note || undefined, actor.id);
   return NextResponse.json({ ok: true, status_label: STATUS_LABELS[(updated ?? t).dev_status] });
 }

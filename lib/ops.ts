@@ -621,6 +621,7 @@ export async function changeStatusOp(
   newStatus: DevStatus,
   actorLabel: string,
   note?: string,
+  actorStaffId: string | null = null, // منفّذ الفعل — يُستثنى من إيميلات تغيير الحالة (كان مفقوداً)
 ): Promise<Ticket | null> {
   const repo = await getRepo();
   const old = await repo.ticketById(ticketId);
@@ -654,7 +655,7 @@ export async function changeStatusOp(
   });
   await emit({
     id: evt.id, type: "field.changed", changedField: "dev_status",
-    ctx: { ticket, old, actor_label: actorLabel, ...(note ? { note } : {}) },
+    ctx: { ticket, old, actor_label: actorLabel, actor_staff_id: actorStaffId, ...(note ? { note } : {}) },
   });
   if (note?.trim()) {
     await repo.eventAdd({
@@ -673,7 +674,7 @@ export async function changeStatusOp(
   if (newStatus === "rejected") {
     await emit({
       id: evt.id, type: "ticket.rejected",
-      ctx: { ticket, old, actor_label: actorLabel, vars: specialVars },
+      ctx: { ticket, old, actor_label: actorLabel, actor_staff_id: actorStaffId, vars: specialVars },
     });
   }
   if (newStatus === "test_failed") {
@@ -698,13 +699,13 @@ export async function changeStatusOp(
     }
     await emit({
       id: evt.id, type: "test.failed",
-      ctx: { ticket, old, actor_label: actorLabel, vars: specialVars },
+      ctx: { ticket, old, actor_label: actorLabel, actor_staff_id: actorStaffId, vars: specialVars },
     });
   }
   if (newStatus === "fixed" || newStatus === "closed") {
     await emit({
       id: evt.id, type: "ticket.delivered",
-      ctx: { ticket, old, actor_label: actorLabel, ...(note ? { note } : {}), vars: specialVars },
+      ctx: { ticket, old, actor_label: actorLabel, actor_staff_id: actorStaffId, ...(note ? { note } : {}), vars: specialVars },
     });
   }
   return ticket;

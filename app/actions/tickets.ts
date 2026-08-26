@@ -418,7 +418,7 @@ export async function changeStatusAction(formData: FormData) {
     const what = status === "rejected" ? "سبب الرفض" : "سبب فشل الاختبار / المشكلة للمطور";
     redirect(`/tickets/${code}?err=${enc(`${what} إجباري — يُرسل في الإيميل`)}`);
   }
-  await changeStatusOp(t.id, status, labelOf(actor), note || undefined);
+  await changeStatusOp(t.id, status, labelOf(actor), note || undefined, actor.id);
   revalidatePath(`/tickets/${code}`);
   redirect(`/tickets/${code}?ok=${enc("تم تحديث الحالة وإطلاق الإشعارات ✓")}`);
 }
@@ -435,7 +435,7 @@ export async function testerResultAction(formData: FormData) {
   // «جاهز للاختبار» → يبدأ بـ«جاري الاختبار» (يبدأ عدّاد تقدير التيست) — ثم يحكم بالنجاح/الفشل
   if (result === "testing") {
     if (t.dev_status !== "ready_for_test") redirect(`/testing?err=${enc("هذه التذكرة ليست جاهزة لبدء الاختبار")}`);
-    await changeStatusOp(t.id, "testing", labelOf(actor));
+    await changeStatusOp(t.id, "testing", labelOf(actor), undefined, actor.id);
     revalidatePath("/testing");
     redirect(`/testing?ok=${enc("بدأ الاختبار — عدّاد تقدير التيست انطلق ⏱️")}`);
   }
@@ -445,7 +445,7 @@ export async function testerResultAction(formData: FormData) {
   if (result === "test_failed" && note.length < 3) {
     redirect(`/testing?err=${enc("اكتب سبب فشل الاختبار / وصف المشكلة — يُرسل للمطوّر إجبارياً")}`);
   }
-  await changeStatusOp(t.id, result, labelOf(actor), note || undefined);
+  await changeStatusOp(t.id, result, labelOf(actor), note || undefined, actor.id);
   revalidatePath("/testing");
   redirect(`/testing?ok=${enc(result === "test_passed" ? "تم اعتماد التذكرة ✓" : "سُجل فشل الاختبار وأُبلغ المطور بالسبب ✓")}`);
 }
