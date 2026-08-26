@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { Topbar } from "@/components/topbar";
+import { QueuePinger } from "@/components/queue-pinger";
 
 export const metadata: Metadata = {
   title: "بوابة الدعم الفني",
@@ -13,6 +14,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body>
         <Topbar />
         <main className="mx-auto max-w-7xl px-4 py-6">{children}</main>
+        <QueuePinger />
       </body>
     </html>
   );

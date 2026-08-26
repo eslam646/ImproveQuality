@@ -164,32 +164,25 @@ let immediateRunning = false;
 
 // إرسال فوري لكن «بعد الرد»: على Cloudflare عبر waitUntil (يعمل بعد إرجاع الاستجابة)،
   // ومحلياً fire-and-forget — المستخدم لا ينتظر Brevo إطلاقاً، والجدولة تبقى شبكة أمان
+  // الإرسال على Cloudflare: لا معالجة داخل الطلب إطلاقاً — كل نداء Brevo/Supabase إضافي يستهلك
+  // ميزانية الطلب (~50 استعلاماً فرعياً) وكان يفشل رندر الصفحة نفسها (500 بعد نجاح الإنشاء!).
+  // البديل: «نبضة المعالجة» — المتصفح يدق /api/worker/tick بعد تحميل أي صفحة (طلب مستقل بميزانية كاملة).
+  // محلياً فقط: fire-and-forget فوري + مؤقّت instrumentation موجود أصلاً
   if (enqueued > 0 && !immediateRunning) {
-    immediateRunning = true; // يُحجز فور الجدولة — الأحداث التالية في نفس الطلب لا تكرر المعالجة
-    const run = async () => {
-      try {
-        const { processDueJobs } = await import("./worker");
-        // دفعة صغيرة محسوبة — الباقي تلتقطه الدورة التالية/زر المعالجة (تفادي حد الاستعلامات الفرعية)
-        await processDueJobs(8);
-      } catch (e) {
-        console.error("immediate job processing:", e); // ستُلتقط في الدورة المجدولة القادمة
-      } finally {
-        immediateRunning = false;
-      }
-    };
-    let deferred = false;
-    try {
-      // متاح فقط في بيئة OpenNext على Cloudflare
-      const mod = "@opennextjs/cloudflare";
-      const { getCloudflareContext } = (await import(/* webpackIgnore: true */ mod)) as { getCloudflareContext: () => { ctx?: { waitUntil?: (p: Promise<unknown>) => void } } };
-      const ctx = getCloudflareContext()?.ctx;
-      if (ctx?.waitUntil) { ctx.waitUntil(run()); deferred = true; }
-    } catch { /* بيئة محلية */ }
-    if (!deferred) {
-      // على Cloudflare بدون waitUntil: لا تشغيل عائم داخل الطلب (يحسب على حد استعلاماته ويضرب 500) —
-      // الإرسال سيتم بالحدث التالي أو الدورة المجدولة. محلياً: fire-and-forget عادي
-      const onCF = (globalThis as { navigator?: { userAgent?: string } }).navigator?.userAgent === "Cloudflare-Workers";
-      if (!onCF) void run();
+    const onCF = (globalThis as { navigator?: { userAgent?: string } }).navigator?.userAgent === "Cloudflare-Workers";
+    if (!onCF) {
+      immediateRunning = true;
+      const run = async () => {
+        try {
+          const { processDueJobs } = await import("./worker");
+          await processDueJobs(25);
+        } catch (e) {
+          console.error("immediate job processing:", e);
+        } finally {
+          immediateRunning = false;
+        }
+      };
+      void run();
     }
   }
   return enqueued;
