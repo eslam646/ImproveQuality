@@ -4,6 +4,7 @@ import { getRepo } from "@/lib/db";
 import { Card, Field, inputCls, Msg, selectCls } from "@/components/ui";
 import { SubmitButton } from "@/components/submit-button";
 import { UrgentAttachmentInput } from "@/components/urgent-attachment-input";
+import { ClientPicker } from "@/components/client-picker";
 
 export const dynamic = "force-dynamic";
 
@@ -24,7 +25,7 @@ export default async function InstantSupportPage({
     if (!f.visible) return null;
     const label = `${f.label}${f.required ? " *" : ""}`;
     switch (f.key) {
-      case "client": return <Field label={label} hint="اختر عميلاً مسجلاً، أو اكتب اسماً جديداً"><select name="client_id" required={f.required} className={selectCls} defaultValue=""><option value="">— اختر العميل —</option>{clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select><input name="client_name" className={`${inputCls} mt-2`} placeholder="أو اكتب اسم العميل" /></Field>;
+      case "client": return <Field label={label} hint="اختر عميلاً مسجلاً، أو اكتب اسماً جديداً"><ClientPicker clients={clients.map((c) => ({ id: c.id, name: c.name }))} required={f.required} selectCls={selectCls} inputCls={inputCls} /></Field>;
       case "creator": return actor.role === "admin"
         ? <Field label={label} hint="كمدير يمكنك الإدخال بالنيابة — يُسجل في التدقيق أنك المُدخل الفعلي"><select name="creator_id" required={f.required} className={selectCls} defaultValue={requesters.some((r) => r.id === actor.id) ? actor.id : (requesters[0]?.id ?? "")}><option value="" disabled>اختر مدخل البيانات…</option>{requesters.map((r) => <option key={r.id} value={r.id}>{r.name} — {r.email}</option>)}</select></Field>
         : <Field label={labelOf_creator(f.label)} hint="أنت مسجل الدخول — الطلب يُسجل باسمك تلقائياً"><input type="hidden" name="creator_id" value={actor.id} /><div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-bold text-slate-700">🔒 {actor.name}</div></Field>;
