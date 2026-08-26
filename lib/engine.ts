@@ -158,15 +158,23 @@ export async function emit(evt: FiredEvent): Promise<number> {
     }
   }
 
-  // إرسال فوري لكن «بعد الرد»: على Cloudflare عبر waitUntil (يعمل بعد إرجاع الاستجابة)،
+  // قفل المعالجة الفورية: الطلب الواحد يطلق أحداثاً عديدة (إنشاء + تكليف تيست + تكليف ديف...)
+// — تشغيل معالجة واحدة صغيرة يكفي، والتكرار كان يستهلك حد الاستعلامات الفرعية في Cloudflare (~50) فيضرب 500
+let immediateRunning = false;
+
+// إرسال فوري لكن «بعد الرد»: على Cloudflare عبر waitUntil (يعمل بعد إرجاع الاستجابة)،
   // ومحلياً fire-and-forget — المستخدم لا ينتظر Brevo إطلاقاً، والجدولة تبقى شبكة أمان
-  if (enqueued > 0) {
+  if (enqueued > 0 && !immediateRunning) {
+    immediateRunning = true; // يُحجز فور الجدولة — الأحداث التالية في نفس الطلب لا تكرر المعالجة
     const run = async () => {
       try {
         const { processDueJobs } = await import("./worker");
-        await processDueJobs(enqueued + 10);
+        // دفعة صغيرة محسوبة — الباقي تلتقطه الدورة التالية/زر المعالجة (تفادي حد الاستعلامات الفرعية)
+        await processDueJobs(8);
       } catch (e) {
         console.error("immediate job processing:", e); // ستُلتقط في الدورة المجدولة القادمة
+      } finally {
+        immediateRunning = false;
       }
     };
     let deferred = false;
@@ -177,7 +185,12 @@ export async function emit(evt: FiredEvent): Promise<number> {
       const ctx = getCloudflareContext()?.ctx;
       if (ctx?.waitUntil) { ctx.waitUntil(run()); deferred = true; }
     } catch { /* بيئة محلية */ }
-    if (!deferred) void run();
+    if (!deferred) {
+      // على Cloudflare بدون waitUntil: لا تشغيل عائم داخل الطلب (يحسب على حد استعلاماته ويضرب 500) —
+      // الإرسال سيتم بالحدث التالي أو الدورة المجدولة. محلياً: fire-and-forget عادي
+      const onCF = (globalThis as { navigator?: { userAgent?: string } }).navigator?.userAgent === "Cloudflare-Workers";
+      if (!onCF) void run();
+    }
   }
   return enqueued;
 }
