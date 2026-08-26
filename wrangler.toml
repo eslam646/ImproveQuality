@@ -1,9 +1,13 @@
 name = "support-hub"
 compatibility_date = "2026-01-01"
 compatibility_flags = ["nodejs_compat"]
-main = ".open-next/worker.js"
+main = "cf-worker.js"
 
 assets = { directory = ".open-next/assets", binding = "ASSETS" }
+
+# كرون المعالجة: كل دقيقتين — يرسل بريد الطابور وتذكيرات التقدير حتى والنظام خامل
+[triggers]
+crons = ["*/2 * * * *"]
 
 [vars]
 DB_DRIVER = "supabase"

@@ -139,7 +139,9 @@ export async function processAll(): Promise<ProcessReport> {
   try { await processEstimationReminders(); } catch (e) { console.error("estimation reminders:", e); }
   try { const { processSpecialistReminders } = await import("./estimation-reminders"); await processSpecialistReminders(); } catch (e) { console.error("specialist reminders:", e); }
 
-  const jobReport = await processDueJobs(25);
+  // دفعة محدودة (10): على Cloudflare كل إيميل يستهلك استعلامات فرعية + نداء Brevo —
+  // الدفعات الكبيرة تتخطى ميزانية الطلب (~50) فتُقتل في المنتصف. الباقي يلتقطه الكرون/النبضة التالية
+  const jobReport = await processDueJobs(10);
   return { remindersEnqueued, ...jobReport };
 }
 
