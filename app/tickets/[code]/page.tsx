@@ -9,11 +9,12 @@ import {
 } from "@/app/actions/tickets";
 import { Badge, Button, Card, Field, Msg, selectCls, inputCls } from "@/components/ui";
 import { allowedTransitions, ALL_STATUSES, ASSIGNMENT_STATUS_LABELS, REQUEST_TYPE_LABELS, ROLE_LABELS, STATUS_COLORS, STATUS_LABELS, urgentStatusInfo } from "@/lib/labels";
-import { fmtDate, parseFileRef } from "@/lib/util";
+import { estToHours, fmtDate, parseFileRef } from "@/lib/util";
 import { AttachmentUpload } from "@/components/attachment-upload";
 import { StatusChangeForm } from "@/components/status-change-form";
 import { UrgentProgressForm } from "@/components/urgent-progress-form";
 import { SpecDeveloperPicker } from "@/components/spec-developer-picker";
+import { LiveTimer } from "@/components/live-timer";
 import type { DevStatus, TicketEvent } from "@/lib/types";
 import { TeamsMeetings } from "@/components/teams-meetings";
 import { teamsConfigStatus } from "@/lib/teams";
@@ -173,7 +174,25 @@ export default async function TicketDetailsPage({
               <Badge color={urgentStatusInfo(ticket).color}>{urgentStatusInfo(ticket).label}</Badge>
             </>
           ) : (
-            <Badge color={STATUS_COLORS[ticket.dev_status]}>{STATUS_LABELS[ticket.dev_status]}</Badge>
+            <>
+              <Badge color={STATUS_COLORS[ticket.dev_status]}>{STATUS_LABELS[ticket.dev_status]}</Badge>
+              {/* ⏱️ عدّاد التيست الحي (زي الدعم الفوري): يعد لايف من بدء «جاري الاختبار» */}
+              {ticket.dev_status === "testing" && ticket.test_started_at && (
+                <LiveTimer
+                  startedAt={ticket.test_started_at}
+                  estimateHours={estToHours(ticket.test_est_days, ticket.test_est_hours, settings.estimation_reminders?.day_hours ?? 8)}
+                  label={isAssignedTester ? "🧪 بتختبر منذ" : `🧪 ${ticket.tester_name ?? "التيست"} يختبر منذ`}
+                />
+              )}
+              {/* عدّاد الديف المباشر (التذاكر القديمة بلا متخصصين) أثناء «قيد التطوير» */}
+              {ticket.dev_status === "in_progress" && ticket.dev_started_at && !!ticket.developer_id && specialists.filter((x) => x.status !== "declined").length === 0 && (
+                <LiveTimer
+                  startedAt={ticket.dev_started_at}
+                  estimateHours={estToHours(ticket.dev_est_days, ticket.dev_est_hours, settings.estimation_reminders?.day_hours ?? 8)}
+                  label={isAssignedDev ? "👨‍💻 شغال منذ" : `👨‍💻 ${ticket.developer_name ?? "الديف"} شغال منذ`}
+                />
+              )}
+            </>
           )}
         </div>
         <div className="flex gap-2 text-sm">
@@ -303,6 +322,7 @@ export default async function TicketDetailsPage({
                 <ul className="mb-4 space-y-2">
                   {specialists.map((sp) => {
                     const mine = sp.staff_id === actor.id;
+                    const dayHours = settings.estimation_reminders?.day_hours ?? 8;
                     const statusBadge = sp.status === "ready"
                       ? <Badge color="bg-emerald-100 text-emerald-800">✅ جاهز</Badge>
                       : sp.status === "accepted"
@@ -325,6 +345,17 @@ export default async function TicketDetailsPage({
                             {sp.ready_at ? ` · جاهز منذ ${fmtDate(sp.ready_at)}` : ""}
                           </span>
                         </div>
+                        {/* ⏱️ العدّاد الحي (زي الدعم الفوري): يعد لايف أثناء الشغل — وبعد التسليم يعرض الوقت الفعلي المستخدم */}
+                        {sp.status === "accepted" && sp.started_at && (
+                          <div className="mt-2">
+                            <LiveTimer startedAt={sp.started_at} estimateHours={estToHours(sp.est_days, sp.est_hours, dayHours)} label={mine ? "شغال منذ" : `${sp.staff_name.split(" ")[0]} شغال منذ`} dayHours={dayHours} />
+                          </div>
+                        )}
+                        {sp.status === "ready" && sp.started_at && sp.ready_at && (
+                          <p className="mt-2 inline-flex items-center gap-1 rounded-lg bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-800">
+                            ✓ الوقت الفعلي المستخدم: {fmtMinutes(Math.max(0, (Date.parse(sp.ready_at) - Date.parse(sp.started_at)) / 60000))}
+                          </p>
+                        )}
                         {sp.decline_reason && <p className="mt-1 text-xs text-rose-600">سبب الرفض: {sp.decline_reason}</p>}
 
                         {canAssignDev && sp.status !== "ready" && (

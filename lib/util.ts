@@ -51,3 +51,9 @@ export function parseFileRef(v: string): { name: string; url: string } | null {
   if (!/^https?:\/\//.test(url) && !url.startsWith("local://")) return null;
   return { name, url };
 }
+
+// تحويل تقدير (أيام + ساعات) لساعات إجمالية — كل يوم = ساعات العمل المعتمدة (لعدّادات LiveTimer)
+export function estToHours(days?: number | null, hours?: number | null, dayHours = 8): number | null {
+  const total = (days ?? 0) * dayHours + (hours ?? 0);
+  return total > 0 ? total : null;
+}
