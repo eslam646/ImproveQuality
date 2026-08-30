@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { fmtDate } from "@/lib/util";
 import { generatePrivateAccessLinkAction, revokePrivateAccessLinkAction } from "@/app/actions/admin";
 
 export function PrivateLinksManager({
@@ -61,8 +62,8 @@ export function PrivateLinksManager({
             {links.map((l) => (
               <tr key={l.id} className="border-t">
                 <td className="p-2 font-semibold">{names[l.staff_id] ?? l.staff_id}</td>
-                <td className="p-2 text-xs text-slate-500">{new Date(l.created_at).toLocaleString("ar-EG")}</td>
-                <td className="p-2 text-xs text-slate-500">{l.last_used_at ? new Date(l.last_used_at).toLocaleString("ar-EG") : "لم يُستخدم"}</td>
+                <td className="p-2 text-xs text-slate-500">{fmtDate(l.created_at)}</td>
+                <td className="p-2 text-xs text-slate-500">{l.last_used_at ? fmtDate(l.last_used_at) : "لم يُستخدم"}</td>
                 <td className="p-2">{l.active ? "✅ نشط" : "⛔ ملغي"}</td>
                 <td className="p-2">
                   {l.active && <button onClick={async () => { await revokePrivateAccessLinkAction(l.id); location.reload(); }} className="text-xs font-bold text-rose-700">إلغاء الرابط</button>}

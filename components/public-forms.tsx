@@ -4,7 +4,7 @@ import { useState } from "react";
 import { STATUS_LABELS, ALL_STATUSES } from "@/lib/labels";
 import type { CustomFieldCfg, DevStatus, FormFieldCfg } from "@/lib/types";
 import { CustomFileInput } from "@/components/custom-file-input";
-import { parseFileRef } from "@/lib/util";
+import { parseFileRef, fmtDate } from "@/lib/util";
 
 const inputCls = "w-full rounded-lg border border-slate-300 px-3 py-2 text-sm";
 
@@ -212,7 +212,7 @@ function orderedTrackRows(res: TrackResult): { key: string; label: string; value
     show_priority: { label: "الأولوية", value: res.priority_label ?? "" },
     show_affected_service: { label: "الخدمة المتأثرة", value: res.affected_service ?? "" },
     show_estimation: { label: "التقدير الزمني", value: estimation },
-    show_last_change: { label: "آخر تحديث للحالة", value: res.last_status_change ? new Date(res.last_status_change).toLocaleString("ar-EG") : "" },
+    show_last_change: { label: "آخر تحديث للحالة", value: res.last_status_change ? fmtDate(res.last_status_change) : "" },
   };
   const order = res.display_order?.length ? res.display_order : Object.keys(rows);
   return order.filter((k) => rows[k]?.value).map((k) => ({ key: k, ...rows[k] }));
@@ -284,7 +284,7 @@ export function TrackForm({ initialCode }: { initialCode: string }) {
                   <li key={i} className="relative flex gap-3 pb-5 last:pb-0">
                     {i < res.timeline!.length - 1 && <span className="absolute right-[7px] top-4 h-full w-0.5 bg-blue-100" />}
                     <span className="relative z-10 mt-1 h-4 w-4 shrink-0 rounded-full border-4 border-blue-100 bg-blue-600" />
-                    <div><b className="block text-sm text-slate-800">{t.status_label}</b><span className="text-xs text-slate-400">{new Date(t.at).toLocaleString("ar-EG")}</span></div>
+                    <div><b className="block text-sm text-slate-800">{t.status_label}</b><span className="text-xs text-slate-400">{fmtDate(t.at)}</span></div>
                   </li>
                 ))}
               </ol>

@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import { fmtDate } from "@/lib/util";
 import { useRouter } from "next/navigation";
 import { addManualTeamsMeetingAction, cancelTeamsMeetingAction, createTeamsMeetingAction } from "@/app/actions/meetings";
 
@@ -30,6 +31,6 @@ export function TeamsMeetings({ code, defaultSubject, staff, meetings, canManage
       {error&&<p className="rounded bg-rose-50 p-2 text-xs font-bold text-rose-700">{error}</p>}
       <button disabled={busy||(mode==="graph"&&!configured)} className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-bold text-white disabled:opacity-40">{busy?"جارٍ الحفظ والإرسال…":mode==="manual"?"حفظ الرابط وإرسال الدعوات":"إنشاء Teams وإرسال الدعوات"}</button>
     </form>}
-    {meetings.length?<div className="space-y-2">{meetings.map(m=><div key={m.id} className="rounded-lg border bg-white p-3"><div className="flex flex-wrap items-center justify-between gap-2"><div><b className="text-sm">{m.subject}</b><p className="text-xs text-slate-500">{new Date(m.starts_at).toLocaleString("ar-EG")} — {m.status==="cancelled"?"ملغي":"مجدول"}</p></div><div className="flex gap-2">{canJoin&&m.join_url&&m.status!=="cancelled"&&<a href={m.join_url} target="_blank" rel="noreferrer" className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-bold text-white">انضم إلى Teams ↗</a>}{canManage&&m.status!=="cancelled"&&<button onClick={async()=>{if(confirm("إلغاء الاجتماع؟")){const r=await cancelTeamsMeetingAction(m.id);if(!r.ok)setError(r.error||"فشل");else router.refresh();}}} className="rounded-lg bg-rose-100 px-3 py-1.5 text-xs font-bold text-rose-700">إلغاء</button>}</div></div></div>)}</div>:<p className="rounded-lg border border-dashed p-4 text-center text-xs text-slate-400">لا توجد اجتماعات مرتبطة بهذه التذكرة</p>}
+    {meetings.length?<div className="space-y-2">{meetings.map(m=><div key={m.id} className="rounded-lg border bg-white p-3"><div className="flex flex-wrap items-center justify-between gap-2"><div><b className="text-sm">{m.subject}</b><p className="text-xs text-slate-500">{fmtDate(m.starts_at)} — {m.status==="cancelled"?"ملغي":"مجدول"}</p></div><div className="flex gap-2">{canJoin&&m.join_url&&m.status!=="cancelled"&&<a href={m.join_url} target="_blank" rel="noreferrer" className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-bold text-white">انضم إلى Teams ↗</a>}{canManage&&m.status!=="cancelled"&&<button onClick={async()=>{if(confirm("إلغاء الاجتماع؟")){const r=await cancelTeamsMeetingAction(m.id);if(!r.ok)setError(r.error||"فشل");else router.refresh();}}} className="rounded-lg bg-rose-100 px-3 py-1.5 text-xs font-bold text-rose-700">إلغاء</button>}</div></div></div>)}</div>:<p className="rounded-lg border border-dashed p-4 text-center text-xs text-slate-400">لا توجد اجتماعات مرتبطة بهذه التذكرة</p>}
   </div>;
 }

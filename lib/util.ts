@@ -21,6 +21,9 @@ export function fmtDate(iso: string | null | undefined): string {
     return new Intl.DateTimeFormat("ar-EG", {
       dateStyle: "medium",
       timeStyle: "short",
+      // سيرفرات Cloudflare تعمل بتوقيت UTC — بدون تثبيت المنطقة كانت الأوقات تظهر ناقصة 3 ساعات
+      // (آمنة في المتصفح أيضاً: process قد لا تكون معرّفة هناك)
+      timeZone: (typeof process !== "undefined" && process.env?.APP_TIMEZONE) || "Africa/Cairo",
     }).format(d);
   } catch {
     return iso;

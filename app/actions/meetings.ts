@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { requireActionPermission } from "@/lib/auth";
 import { getRepo } from "@/lib/db";
 import { cancelTeamsCalendarMeeting, createTeamsCalendarMeeting } from "@/lib/teams";
-import { escapeHtml } from "@/lib/util";
+import {escapeHtml, fmtDate} from "@/lib/util";
 import { sendMail } from "@/lib/email";
 import { renderBlocks, renderTemplate, templateVars, wrapEmail } from "@/lib/templates";
 import { DEFAULT_TEMPLATE_BLOCKS } from "@/lib/types";
@@ -58,8 +58,8 @@ export async function addManualTeamsMeetingAction(input: { code: string; subject
   const vars = {
     ...templateVars(ticket, settings),
     meeting_subject: subject,
-    meeting_start: start.toLocaleString("ar-EG"),
-    meeting_end: end.toLocaleString("ar-EG"),
+    meeting_start: fmtDate(start.toISOString()),
+    meeting_end: fmtDate(end.toISOString()),
     meeting_duration: `${duration} دقيقة`,
     meeting_join_url: parsedUrl.toString(),
   };
